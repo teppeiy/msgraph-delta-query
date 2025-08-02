@@ -1,0 +1,4 @@
+# Azure Blob Storage dependencies for delta link persistence
+# Install with: pip install -r requirements-azure.txt
+azure-storage-blob>=12.14.0
+azure-identity>=1.12.0

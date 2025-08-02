@@ -12,3 +12,6 @@ mypy>=1.0.0
 # Runtime dependencies (for testing)
 aiohttp>=3.8.0
 azure-identity>=1.12.0
+
+# Azure dependencies (for testing Azure Blob Storage)
+azure-storage-blob>=12.14.0

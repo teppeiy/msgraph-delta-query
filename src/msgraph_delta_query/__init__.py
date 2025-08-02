@@ -6,7 +6,7 @@ with automatic delta link management and asynchronous support.
 """
 
 from .client import AsyncDeltaQueryClient
-from .storage import DeltaLinkStorage, LocalFileDeltaLinkStorage
+from .storage import DeltaLinkStorage, LocalFileDeltaLinkStorage, AzureBlobDeltaLinkStorage
 from .models import ChangeSummary, ResourceParams, PageMetadata, DeltaQueryMetadata
 
 __version__ = "0.1.0"
@@ -17,6 +17,7 @@ __all__ = [
     "AsyncDeltaQueryClient",
     "DeltaLinkStorage", 
     "LocalFileDeltaLinkStorage",
+    "AzureBlobDeltaLinkStorage",
     "ChangeSummary",
     "ResourceParams",
     "PageMetadata", 

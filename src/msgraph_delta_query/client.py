@@ -47,6 +47,42 @@ class AsyncDeltaQueryClient:
         self._initialized = False
         self._closed = False
         
+        # Log the delta link storage source being used
+        storage_type = type(self.delta_link_storage).__name__
+        storage_info = f"Using {storage_type} for delta link storage"
+        
+        # Add specific details for different storage types
+        if storage_type == "AzureBlobDeltaLinkStorage":
+            # Azure Blob Storage
+            container_name = getattr(self.delta_link_storage, 'container_name', 'deltalinks')
+            
+            # Try to get account name from various sources
+            account_name = "auto-detecting..."
+            account_url = getattr(self.delta_link_storage, '_account_url', None)
+            connection_string = getattr(self.delta_link_storage, '_connection_string', None)
+            
+            if account_url:
+                # Extract from account URL
+                try:
+                    account_name = account_url.split('//')[1].split('.')[0]
+                except:
+                    account_name = "from account URL"
+            elif connection_string:
+                # Extract from connection string
+                try:
+                    if "AccountName=" in connection_string:
+                        account_name = connection_string.split("AccountName=")[1].split(";")[0]
+                except:
+                    account_name = "from connection string"
+            
+            storage_info += f" (Account: {account_name}, Container: {container_name})"
+        elif storage_type == "LocalFileDeltaLinkStorage":
+            # Local File Storage
+            deltalinks_dir = getattr(self.delta_link_storage, 'deltalinks_dir', 'deltalinks')
+            storage_info += f" (Directory: {deltalinks_dir})"
+        
+        logging.info(storage_info)
+        
         # Register this instance for cleanup
         _client_registry.add(self)
         
@@ -215,11 +251,21 @@ class AsyncDeltaQueryClient:
         filter: Optional[str] = None,
         delta_link: Optional[str] = None,
         deltatoken_latest: bool = False,
-        top: Optional[int] = None
+        top: Optional[int] = None,
+        fallback_to_full_sync: bool = True
     ) -> AsyncGenerator[Tuple[List[Dict[str, Any]], PageMetadata], None]:
         """
         Stream delta query results page by page.
         Yields (objects, page_metadata) for each page.
+        
+        Args:
+            resource: The resource type (e.g., "users", "applications")
+            select: List of properties to select
+            filter: OData filter expression
+            delta_link: Explicit delta link to use (overrides stored one)
+            deltatoken_latest: Use latest deltatoken for initial sync
+            top: Maximum items per page
+            fallback_to_full_sync: If True, retry with full sync when delta link fails (default: True)
         """
         page = 0
         next_link: Optional[str] = None
@@ -274,7 +320,53 @@ class AsyncDeltaQueryClient:
             status, text, result = await self._make_request(url)
             
             if status != 200:
-                break
+                # Check if this was a delta link failure and we should fallback
+                # Handle various delta link related errors that can occur:
+                # - HTTP 400: "Badly formed token" (invalid/malformed/expired delta tokens)
+                # - HTTP 410: "Gone" (expired delta tokens)
+                # - HTTP 404: "Not Found" (malformed URLs or expired tokens)
+                delta_link_failure = (
+                    status in (400, 404, 410) and 
+                    fallback_to_full_sync and 
+                    delta_link and 
+                    page == 0
+                )
+                
+                if delta_link_failure:
+                    # Try to extract error details for better logging
+                    error_msg = "unknown error"
+                    try:
+                        error_data = json.loads(text) if text else {}
+                        if "error" in error_data:
+                            error_msg = error_data["error"].get("message", error_msg)
+                    except:
+                        pass
+                    
+                    logging.warning(f"Delta link failed with HTTP {status} ({error_msg}), falling back to full sync")
+                    
+                    # If this was a stored delta link that failed, clear it from storage
+                    if used_stored_deltalink:
+                        logging.info(f"Clearing invalid stored delta link for {resource}")
+                        await self.delta_link_storage.delete(resource)
+                        used_stored_deltalink = False  # Mark that we're no longer using stored delta link
+                    
+                    # Clear the failed delta link and retry with full sync
+                    delta_link = None
+                    params.pop('$deltatoken', None)  # Remove deltatoken if present
+                    url = f"{base_url}?{urllib.parse.urlencode(params)}"
+                    
+                    # Retry the request without delta link
+                    status, text, result = await self._make_request(url)
+                    if status != 200:
+                        logging.error(f"Full sync fallback also failed with HTTP {status}: {text}")
+                        break
+                else:
+                    # For non-delta-link failures or when fallback is disabled
+                    if not fallback_to_full_sync and delta_link and page == 0:
+                        logging.warning(f"Delta link failed with HTTP {status}, but fallback is disabled")
+                    else:
+                        logging.error(f"Request failed with HTTP {status}: {text}")
+                    break
 
             objects = result.get("value", [])
             page += 1
@@ -363,11 +455,22 @@ class AsyncDeltaQueryClient:
         delta_link: Optional[str] = None,
         deltatoken_latest: bool = False,
         top: Optional[int] = None,
-        max_objects: Optional[int] = None
+        max_objects: Optional[int] = None,
+        fallback_to_full_sync: bool = True
     ) -> Tuple[List[Dict[str, Any]], Optional[str], DeltaQueryMetadata]:
         """
         Execute delta query and return all results.
         Enhanced with better metadata and optional limits.
+        
+        Args:
+            resource: The resource type (e.g., "users", "applications")
+            select: List of properties to select
+            filter: OData filter expression
+            delta_link: Explicit delta link to use (overrides stored one)
+            deltatoken_latest: Use latest deltatoken for initial sync
+            top: Maximum items per page
+            max_objects: Maximum total objects to return
+            fallback_to_full_sync: If True, retry with full sync when delta link fails (default: True)
         """
         all_objects: List[Dict[str, Any]] = []
         final_delta_link: Optional[str] = None
@@ -395,7 +498,7 @@ class AsyncDeltaQueryClient:
 
         try:
             async for objects, page_meta in self.delta_query_stream(
-                resource, select, filter, delta_link, deltatoken_latest, top
+                resource, select, filter, delta_link, deltatoken_latest, top, fallback_to_full_sync
             ):
                 all_objects.extend(objects)
                 total_pages = page_meta.page

@@ -44,6 +44,7 @@ def test_all_exports():
         "AsyncDeltaQueryClient",
         "DeltaLinkStorage", 
         "LocalFileDeltaLinkStorage",
+        "AzureBlobDeltaLinkStorage",
         "ChangeSummary",
         "ResourceParams",
         "PageMetadata",

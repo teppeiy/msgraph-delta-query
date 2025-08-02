@@ -17,7 +17,8 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 from dotenv import load_dotenv
-from msgraph_delta_query import AsyncDeltaQueryClient
+from msgraph_delta_query import AsyncDeltaQueryClient, AzureBlobDeltaLinkStorage
+from msgraph_delta_query.storage.azure_blob import AzureBlobDeltaLinkStorage
 
 
 async def run_user_sync():
@@ -25,7 +26,8 @@ async def run_user_sync():
     print(f"🔄 Starting sync at {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
     
     # Create client for this sync
-    client = AsyncDeltaQueryClient()
+    storage = AzureBlobDeltaLinkStorage()
+    client = AsyncDeltaQueryClient(delta_link_storage=storage)
     
     try:
         # Run delta query - automatically uses incremental sync if deltalink exists
@@ -120,6 +122,10 @@ async def main():
     
     if missing_vars:
         print(f"❌ Missing required environment variables: {', '.join(missing_vars)}")
+        print("💡 For authentication, set up Azure credentials using one of:")
+        print("   - Environment variables (AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_CLIENT_SECRET)")
+        print("   - Azure CLI: az login")
+        print("   - VS Code Azure Account extension")
         return
     
     # Configure logging (reduce Azure SDK noise)

@@ -53,12 +53,13 @@ async def applications_example():
     client = AsyncDeltaQueryClient()
     
     try:
-        # Fetch applications
+        # Fetch applications with fallback enabled (default)
         print("--- Fetching Applications ---")
         apps, app_delta_link, app_meta = await client.delta_query_all(
             resource="applications",
             select=["id", "displayName", "appId", "createdDateTime"],
-            top=50
+            top=50,
+            fallback_to_full_sync=True  # This is the default, shown for clarity
         )
         
         print(f"Retrieved {len(apps)} applications in {app_meta.duration_seconds:.2f}s")
@@ -66,6 +67,12 @@ async def applications_example():
         
         # Use the built-in change summary model for display
         print(f"📊 {app_meta.change_summary}")
+        
+        # Show if this was an incremental or full sync
+        if app_meta.change_summary.timestamp:
+            print(f"📅 Incremental sync (since: {app_meta.change_summary.timestamp})")
+        else:
+            print(f"📅 Full sync (no previous delta link or fallback occurred)")
         
         # Show sample applications (leverage the models for change detection)
         print("\nSample applications:")
@@ -218,6 +225,11 @@ async def main():
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
+    
+    # Reduce verbosity of Azure SDK loggers
+    logging.getLogger('azure.storage.blob').setLevel(logging.WARNING)
+    logging.getLogger('azure.identity').setLevel(logging.WARNING)
+    logging.getLogger('azure.core').setLevel(logging.WARNING)
     
     # Run the main example
     await applications_example()

@@ -1,3 +1,7 @@
+"""
+Local file-based delta link storage implementation.
+"""
+
 import os
 import json
 import logging
@@ -5,30 +9,31 @@ import hashlib
 from typing import Optional, Dict
 from datetime import datetime, timezone
 
-class DeltaLinkStorage:
-    """Abstract base class for delta link storage."""
-    async def get(self, resource: str) -> Optional[str]:
-        raise NotImplementedError
-    async def get_metadata(self, resource: str) -> Optional[Dict]:
-        raise NotImplementedError
-    async def set(self, resource: str, delta_link: str, metadata: Optional[Dict] = None):
-        raise NotImplementedError
-    async def delete(self, resource: str):
-        raise NotImplementedError
+from .base import DeltaLinkStorage
+
 
 class LocalFileDeltaLinkStorage(DeltaLinkStorage):
     """Stores delta links in a local JSON file per resource with metadata."""
+    
     def __init__(self, folder: str = "deltalinks"):
+        """
+        Initialize local file storage.
+        
+        Args:
+            folder: Directory to store delta link files (default: "deltalinks")
+        """
         self.folder = folder
         os.makedirs(self.folder, exist_ok=True)
 
     def _get_resource_path(self, resource: str) -> str:
+        """Convert resource name to safe file path."""
         safe_name = resource.replace('/', '_').replace('\\', '_').replace(':', '_')
         if len(safe_name) > 200:
             safe_name = hashlib.md5(resource.encode()).hexdigest()
         return os.path.join(self.folder, f"{safe_name}.json")
 
     async def get(self, resource: str) -> Optional[str]:
+        """Get delta link for a resource."""
         path = self._get_resource_path(resource)
         if os.path.exists(path):
             try:
@@ -58,6 +63,7 @@ class LocalFileDeltaLinkStorage(DeltaLinkStorage):
         return None
 
     async def set(self, resource: str, delta_link: str, metadata: Optional[Dict] = None):
+        """Set delta link and metadata for a resource."""
         path = self._get_resource_path(resource)
         data = {
             "delta_link": delta_link,
@@ -73,6 +79,7 @@ class LocalFileDeltaLinkStorage(DeltaLinkStorage):
             raise
 
     async def delete(self, resource: str):
+        """Delete delta link and metadata for a resource."""
         path = self._get_resource_path(resource)
         try:
             if os.path.exists(path):

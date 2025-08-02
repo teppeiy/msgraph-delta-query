@@ -41,6 +41,10 @@ dev = [
     "flake8>=4.0.0",
     "mypy>=0.950",
 ]
+azure = [
+    "azure-storage-blob>=12.14.0",
+    "azure-identity>=1.12.0",
+]
 
 [project.urls]
 "Homepage" = "https://github.com/yourusername/msgraph-delta-query"
