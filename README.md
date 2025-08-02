@@ -164,9 +164,32 @@ pip install -e ".[dev]"
 
 ### Running Tests
 
+#### Library Quality Tests
+
+These tests must pass for every release and are run in CI/CD:
+
 ```bash
-pytest
+# Run all quality tests
+pytest tests/
+
+# With coverage
+pytest tests/ --cov=src/msgraph_delta_query
 ```
+
+#### Research and Verification Tests
+
+These are exploratory tests for understanding behavior and validating design decisions:
+
+```bash
+# Run specific research tests
+python -m research.graph_behavior.delta_link_behavior_study
+python -m research.storage_verification.azure_blob_priority_verification
+
+# Or run from their directories
+cd research/graph_behavior && python delta_link_behavior_study.py
+```
+
+See `/tests/README.md` and `/research/README.md` for more details on test organization.
 
 ### Code Formatting
 

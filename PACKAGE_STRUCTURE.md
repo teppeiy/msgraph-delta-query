@@ -6,16 +6,29 @@ This document describes the complete structure of the msgraph-delta-query PyPI p
 
 ```
 msgraph-delta-query/
-├── src/
+├── src/                         # Library source code (shipped to PyPI)
 │   └── msgraph_delta_query/
 │       ├── __init__.py          # Package initialization and exports
 │       ├── client.py            # Main AsyncDeltaQueryClient class
+│       ├── models.py            # Data models and change summaries
 │       └── storage.py           # Storage backends for delta links
-├── tests/
+├── tests/                       # Library quality tests (not shipped, CI/CD only)
+│   ├── README.md                # Test documentation
 │   ├── __init__.py              # Test package initialization
-│   └── test_storage.py          # Tests for storage backends
-├── examples/
-│   └── basic_usage.py           # Usage examples
+│   ├── test_client.py           # AsyncDeltaQueryClient tests
+│   ├── test_models.py           # Data model tests
+│   ├── test_storage.py          # Storage backend tests
+│   ├── test_integration.py      # Microsoft Graph integration tests
+│   └── test_examples.py         # Example code validation
+├── research/                    # Research and verification tests (not shipped)
+│   ├── README.md                # Research test documentation
+│   ├── graph_behavior/          # Microsoft Graph API behavior studies
+│   ├── storage_verification/    # Storage implementation verification
+│   └── client_verification/     # Client behavior verification
+├── examples/                    # Usage examples and demos (optionally shipped)
+│   ├── basic_usage.py           # Simple usage example
+│   ├── change_summary_demo.py   # Change summary features
+│   └── periodic_sync.py         # Periodic synchronization pattern
 ├── pyproject.toml               # Modern Python package configuration
 ├── README.md                    # Package documentation
 ├── LICENSE                      # MIT License
@@ -39,12 +52,31 @@ msgraph-delta-query/
 - Concurrent request limiting
 - Delta link management integration
 
-### `src/msgraph_delta_query/storage.py`
-- Abstract base class `DeltaLinkStorage`
-- `LocalFileDeltaLinkStorage` implementation
-- Stores delta links in local JSON files
+### `src/msgraph_delta_query/models.py`
+
+- Data models for change summaries and query results
+- Type definitions for API responses
+- Utility classes for data processing
+
+### `tests/` (Library Quality Tests)
+
+- Core test suite that must pass for every release
+- Run automatically in CI/CD pipelines
+- Covers all public APIs and critical functionality
+- **Not shipped to PyPI** - development and CI only
+- See `/tests/README.md` for detailed test organization
+
+### `research/` (Research and Verification Tests)
+
+- Exploratory tests for understanding system behavior
+- Verification scripts for design decisions and external API behavior
+- Not required to pass for releases
+- **Not shipped to PyPI** - development only
+- Organized by research category (graph_behavior, storage_verification, client_verification)
+- See `/research/README.md` for detailed organization
 
 ### `pyproject.toml`
+
 - Modern Python package configuration
 - Dependencies: `aiohttp>=3.8.0`, `azure-identity>=1.12.0`
 - Development dependencies for testing and linting
