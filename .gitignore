@@ -168,3 +168,10 @@ Thumbs.db
 # Project specific
 deltalinks/
 *.json
+
+# Azurite (Azure Storage Emulator)
+__blobstorage__/
+__queuestorage__/
+__tablestorage__/
+__azurite_db*.json
+.azurite/

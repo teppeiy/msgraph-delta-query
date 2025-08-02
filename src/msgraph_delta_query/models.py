@@ -56,13 +56,14 @@ class ChangeSummary:
         
         if self.timestamp:
             time_ago = self._format_time_ago(self.timestamp)
-            # Format timestamp for display
-            if self.timestamp.tzinfo:
-                # Convert to local time for display if timezone-aware
-                local_time = self.timestamp.astimezone()
-                formatted_time = local_time.strftime("%Y-%m-%d %H:%M:%S %Z")
-            else:
+            # Always format as UTC, regardless of timezone info
+            if self.timestamp.tzinfo is None:
+                # Assume naive datetime is UTC
                 formatted_time = self.timestamp.strftime("%Y-%m-%d %H:%M:%S UTC")
+            else:
+                # Convert to UTC for display
+                utc_time = self.timestamp.astimezone(timezone.utc)
+                formatted_time = utc_time.strftime("%Y-%m-%d %H:%M:%S UTC")
             print(f"  Updates since: {formatted_time} ({time_ago})")
         else:
             print(f"  Query type: Full sync (no previous delta link)")
@@ -72,12 +73,14 @@ class ChangeSummary:
         time_info = ""
         if self.timestamp:
             time_ago = self._format_time_ago(self.timestamp)
-            if self.timestamp.tzinfo:
-                # Convert to local time for display if timezone-aware
-                local_time = self.timestamp.astimezone()
-                formatted_time = local_time.strftime("%Y-%m-%d %H:%M:%S")
-            else:
+            # Always format as UTC, regardless of timezone info
+            if self.timestamp.tzinfo is None:
+                # Assume naive datetime is UTC
                 formatted_time = self.timestamp.strftime("%Y-%m-%d %H:%M:%S UTC")
+            else:
+                # Convert to UTC for display
+                utc_time = self.timestamp.astimezone(timezone.utc)
+                formatted_time = utc_time.strftime("%Y-%m-%d %H:%M:%S UTC")
             time_info = f" (since: {formatted_time}, {time_ago})"
         else:
             time_info = " (full sync)"

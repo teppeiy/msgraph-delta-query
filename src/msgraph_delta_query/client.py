@@ -8,7 +8,7 @@ import weakref
 from typing import Optional, Any, Dict, List, Tuple, AsyncGenerator
 from dataclasses import dataclass
 from azure.identity.aio import DefaultAzureCredential
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from .storage import DeltaLinkStorage, LocalFileDeltaLinkStorage
 from .models import ChangeSummary, ResourceParams, PageMetadata, DeltaQueryMetadata
 
@@ -46,8 +46,6 @@ class AsyncDeltaQueryClient:
         self._credential_created = False
         self._initialized = False
         self._closed = False
-        self._cached_token: Optional[str] = None
-        self._token_expires_at: Optional[datetime] = None
         
         # Register this instance for cleanup
         _client_registry.add(self)
@@ -98,10 +96,6 @@ class AsyncDeltaQueryClient:
             
         self._closed = True
         
-        # Clear cached token
-        self._cached_token = None
-        self._token_expires_at = None
-        
         # Close our session
         if self._session and not self._session.closed:
             await self._session.close()
@@ -120,82 +114,60 @@ class AsyncDeltaQueryClient:
         self._credential_created = False
         self._initialized = False
 
-    async def get_token(self, force_refresh: bool = False) -> str:
+    async def get_token(self) -> str:
         """
-        Get access token for Microsoft Graph API with caching and automatic refresh.
+        Get access token for Microsoft Graph API.
         
-        Args:
-            force_refresh: If True, forces a new token to be acquired
+        The Azure Identity library handles all token caching, refresh, and retry logic automatically.
         """
         await self._initialize()
         if self.credential is None:
             raise ValueError("Credential is not initialized")
         
-        # Check if we have a valid cached token
-        if not force_refresh and self._cached_token and self._token_expires_at:
-            # Add 5 minute buffer before token expiry to avoid edge cases
-            buffer_time = datetime.now(timezone.utc).replace(microsecond=0) + timedelta(minutes=5)
-            if self._token_expires_at > buffer_time:
-                logging.debug("Using cached token")
-                return self._cached_token
-        
         try:
-            logging.debug("Acquiring new access token")
+            # Azure Identity library handles caching and refresh automatically
             token = await self.credential.get_token("https://graph.microsoft.com/.default")
-            
-            # Cache the token and calculate expiry
-            self._cached_token = token.token
-            self._token_expires_at = datetime.fromtimestamp(token.expires_on, tz=timezone.utc)
-            
-            logging.debug(f"Token acquired, expires at: {self._token_expires_at}")
-            return self._cached_token
-            
+            return token.token
         except Exception as e:
             logging.error(f"Failed to get access token: {e}")
-            # Clear cached token on error
-            self._cached_token = None
-            self._token_expires_at = None
             raise
 
     async def _make_request(
         self, 
         url: str, 
-        headers: Dict[str, str]
+        headers: Optional[Dict[str, str]] = None
     ) -> Tuple[int, str, Dict[str, Any]]:
-        """Make HTTP request with rate limiting, error handling, and token refresh."""
+        """Make HTTP request with rate limiting and error handling."""
         await self._initialize()
         
         if self._session is None:
             raise ValueError("HTTP session is not initialized")
         
+        # Get fresh token for each request - Azure Identity handles caching/refresh
+        token = await self.get_token()
+        request_headers = headers or {}
+        request_headers["Authorization"] = f"Bearer {token}"
+        request_headers["Accept"] = "application/json"
+        
         async with self.semaphore:
             backoff, max_backoff = 1, 60
             max_retries = 5
-            token_refreshed = False
             
             for attempt in range(max_retries):
                 try:
                     logging.debug(f"Request attempt {attempt + 1}: {url}")
-                    async with self._session.get(url, headers=headers) as resp:
+                    async with self._session.get(url, headers=request_headers) as resp:
                         text = await resp.text()
                         
                         if resp.status == 401:
-                            # Token expired or invalid - try to refresh once per request
-                            if not token_refreshed:
-                                logging.warning("Unauthorized (401) - attempting token refresh")
-                                try:
-                                    # Force refresh the token
-                                    new_token = await self.get_token(force_refresh=True)
-                                    headers["Authorization"] = f"Bearer {new_token}"
-                                    token_refreshed = True
-                                    
-                                    # Don't count this as a retry attempt for other errors
-                                    continue
-                                except Exception as token_error:
-                                    logging.error(f"Token refresh failed: {token_error}")
-                                    return resp.status, text, {}
+                            # Token might be expired - get a fresh one and retry once
+                            if attempt == 0:  # Only retry once for auth issues
+                                logging.warning("Unauthorized (401) - getting fresh token and retrying")
+                                fresh_token = await self.get_token()
+                                request_headers["Authorization"] = f"Bearer {fresh_token}"
+                                continue
                             else:
-                                logging.error("Unauthorized (401) after token refresh - authentication failed")
+                                logging.error("Unauthorized (401) after retry - authentication failed")
                                 return resp.status, text, {}
                         elif resp.status == 429:
                             retry_after = resp.headers.get("Retry-After")
@@ -270,9 +242,6 @@ class AsyncDeltaQueryClient:
                     except Exception:
                         pass  # If parsing fails, continue without the timestamp
 
-        token = await self.get_token()
-        headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
-
         # Build initial URL
         base_url = f"{self.GRAPH_BASE}/{resource}/delta"
         params: Dict[str, str] = {}
@@ -301,7 +270,8 @@ class AsyncDeltaQueryClient:
             if not url:
                 break
 
-            status, text, result = await self._make_request(url, headers)
+            # Azure Identity handles token management automatically
+            status, text, result = await self._make_request(url)
             
             if status != 200:
                 break
