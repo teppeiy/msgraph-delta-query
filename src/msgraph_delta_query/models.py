@@ -6,7 +6,7 @@ metadata, providing type safety and better developer experience.
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import List, Optional
 
 
@@ -67,7 +67,7 @@ class ChangeSummary:
                 formatted_time = utc_time.strftime("%Y-%m-%d %H:%M:%S UTC")
             print(f"  Updates since: {formatted_time} ({time_ago})")
         else:
-            print(f"  Query type: Full sync (no previous delta link)")
+            print("  Query type: Full sync (no previous delta link)")
 
     def __str__(self) -> str:
         """String representation of the change summary."""

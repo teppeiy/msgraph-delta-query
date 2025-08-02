@@ -45,15 +45,15 @@ class AzureBlobDeltaLinkStorage(DeltaLinkStorage):
     ):
         self.container_name = container_name
         self._local_settings_path = local_settings_path
-        self._blob_service_client = None
+        self._blob_service_client: Optional[BlobServiceClient] = None
         self._credential_created = False
 
         # Priority order initialization:
         if connection_string:
             # 1. Explicit connection string (highest priority for local dev)
-            self._connection_string = connection_string
-            self._account_url = None
-            self._credential = None
+            self._connection_string: Optional[str] = connection_string
+            self._account_url: Optional[str] = None
+            self._credential: Optional[DefaultAzureCredential] = None
         elif account_url and credential:
             # 2. Explicit account_url + credential
             self._account_url = account_url
@@ -201,6 +201,7 @@ class AzureBlobDeltaLinkStorage(DeltaLinkStorage):
                 )
                 logging.debug(f"Created BlobServiceClient for {self._account_url}")
 
+        assert self._blob_service_client is not None
         return self._blob_service_client
 
     def _get_blob_name(self, resource: str) -> str:
@@ -211,7 +212,7 @@ class AzureBlobDeltaLinkStorage(DeltaLinkStorage):
             safe_name = hashlib.md5(resource.encode()).hexdigest()
         return f"{safe_name}.json"
 
-    async def _ensure_container_exists(self):
+    async def _ensure_container_exists(self) -> None:
         """Ensure the container exists."""
         try:
             blob_service_client = await self._get_blob_service_client()
@@ -248,7 +249,8 @@ class AzureBlobDeltaLinkStorage(DeltaLinkStorage):
             content = await download_stream.readall()
             data = json.loads(content.decode("utf-8"))
 
-            return data.get("delta_link")
+            delta_link = data.get("delta_link")
+            return delta_link if isinstance(delta_link, str) else None
 
         except ResourceNotFoundError:
             # Blob doesn't exist - this is normal for first-time usage
@@ -292,7 +294,7 @@ class AzureBlobDeltaLinkStorage(DeltaLinkStorage):
 
     async def set(
         self, resource: str, delta_link: str, metadata: Optional[Dict] = None
-    ):
+    ) -> None:
         """Set delta link and metadata for a resource."""
         try:
             await self._ensure_container_exists()
@@ -322,7 +324,7 @@ class AzureBlobDeltaLinkStorage(DeltaLinkStorage):
             )
             raise
 
-    async def delete(self, resource: str):
+    async def delete(self, resource: str) -> None:
         """Delete delta link and metadata for a resource."""
         try:
             blob_service_client = await self._get_blob_service_client()
@@ -343,7 +345,7 @@ class AzureBlobDeltaLinkStorage(DeltaLinkStorage):
                 f"Failed to delete delta link for {resource} from Azure Blob Storage: {e}"
             )
 
-    async def close(self):
+    async def close(self) -> None:
         """Close the blob service client and credential."""
         if self._blob_service_client:
             await self._blob_service_client.close()

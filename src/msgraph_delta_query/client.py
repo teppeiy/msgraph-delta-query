@@ -1,12 +1,10 @@
 import aiohttp
 import logging
-import os
 import json
 import urllib.parse
 import asyncio
 import weakref
 from typing import Optional, Any, Dict, List, Tuple, AsyncGenerator
-from dataclasses import dataclass
 from azure.identity.aio import DefaultAzureCredential
 from datetime import datetime, timezone
 from .storage import DeltaLinkStorage, LocalFileDeltaLinkStorage
@@ -14,10 +12,10 @@ from .models import ChangeSummary, ResourceParams, PageMetadata, DeltaQueryMetad
 
 
 # Global registry to track all client instances for cleanup
-_client_registry = weakref.WeakSet()
+_client_registry: weakref.WeakSet = weakref.WeakSet()
 
 
-async def _cleanup_all_clients():
+async def _cleanup_all_clients() -> None:
     """Cleanup function for all clients - called during event loop shutdown."""
     for client in list(_client_registry):
         try:
@@ -121,7 +119,7 @@ class AsyncDeltaQueryClient:
         except RuntimeError:
             pass  # No running loop
 
-    async def _initialize(self):
+    async def _initialize(self) -> None:
         """Initialize the client - create session and credential if needed."""
         if self._initialized or self._closed:
             return
@@ -139,7 +137,7 @@ class AsyncDeltaQueryClient:
 
         self._initialized = True
 
-    async def _internal_close(self):
+    async def _internal_close(self) -> None:
         """Internal close method - can be called multiple times safely."""
         if self._closed:
             return
@@ -611,12 +609,12 @@ class AsyncDeltaQueryClient:
 
         return all_objects, final_delta_link, meta
 
-    async def reset_delta_link(self, resource: str):
+    async def reset_delta_link(self, resource: str) -> None:
         """Reset/delete the stored delta link for a resource."""
         await self.delta_link_storage.delete(resource)
         logging.info(f"Reset delta link for {resource}")
 
-    def __del__(self):
+    def __del__(self) -> None:
         """Destructor - schedule cleanup if not already closed."""
         if not self._closed:
             try:
@@ -632,7 +630,7 @@ class AsyncDeltaQueryClient:
 # ---------- Usage Example ----------
 
 
-async def example_usage():
+async def example_usage() -> None:
     """Example of simplified usage - no context manager, no manual closing needed."""
 
     # Simple instantiation - everything handled internally

@@ -34,7 +34,7 @@ class DeltaLinkStorage:
 
     async def set(
         self, resource: str, delta_link: str, metadata: Optional[Dict] = None
-    ):
+    ) -> None:
         """
         Set delta link and metadata for a resource.
 
@@ -45,7 +45,7 @@ class DeltaLinkStorage:
         """
         raise NotImplementedError
 
-    async def delete(self, resource: str):
+    async def delete(self, resource: str) -> None:
         """
         Delete delta link and metadata for a resource.
 
@@ -54,7 +54,7 @@ class DeltaLinkStorage:
         """
         raise NotImplementedError
 
-    async def close(self):
+    async def close(self) -> None:
         """
         Clean up any resources used by the storage implementation.
         Default implementation does nothing.

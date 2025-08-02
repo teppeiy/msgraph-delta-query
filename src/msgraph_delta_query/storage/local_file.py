@@ -39,7 +39,8 @@ class LocalFileDeltaLinkStorage(DeltaLinkStorage):
             try:
                 with open(path, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    return data.get("delta_link")
+                    delta_link = data.get("delta_link")
+                    return delta_link if isinstance(delta_link, str) else None
             except Exception as e:
                 logging.warning(f"Failed to read delta link for {resource}: {e}")
                 return None
@@ -64,7 +65,7 @@ class LocalFileDeltaLinkStorage(DeltaLinkStorage):
 
     async def set(
         self, resource: str, delta_link: str, metadata: Optional[Dict] = None
-    ):
+    ) -> None:
         """Set delta link and metadata for a resource."""
         path = self._get_resource_path(resource)
         data = {
@@ -80,7 +81,7 @@ class LocalFileDeltaLinkStorage(DeltaLinkStorage):
             logging.error(f"Failed to save delta link for {resource}: {e}")
             raise
 
-    async def delete(self, resource: str):
+    async def delete(self, resource: str) -> None:
         """Delete delta link and metadata for a resource."""
         path = self._get_resource_path(resource)
         try:
