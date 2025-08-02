@@ -110,7 +110,7 @@ class AzureBlobDeltaLinkStorage(DeltaLinkStorage):
                 try:
                     account_part = conn_str.split("AccountName=")[1].split(";")[0]
                     account_info = account_part
-                except:
+                except (IndexError, AttributeError):
                     pass
 
             env_var_name = (
@@ -119,7 +119,8 @@ class AzureBlobDeltaLinkStorage(DeltaLinkStorage):
                 else "AzureWebJobsStorage"
             )
             logging.info(
-                f"Azure Blob Storage: Using connection string from {env_var_name} (account: {account_info})"
+                f"Azure Blob Storage: Using connection string from {env_var_name} "
+                f"(account: {account_info})"
             )
             return {
                 "connection_string": conn_str,
@@ -145,11 +146,12 @@ class AzureBlobDeltaLinkStorage(DeltaLinkStorage):
                                 0
                             ]
                             account_info = account_part
-                        except:
+                        except (IndexError, AttributeError):
                             pass
 
                     logging.info(
-                        f"Azure Blob Storage: Using connection string from {self._local_settings_path} (account: {account_info})"
+                        f"Azure Blob Storage: Using connection string from "
+                        f"{self._local_settings_path} (account: {account_info})"
                     )
                     return {
                         "connection_string": conn_str,
@@ -162,10 +164,17 @@ class AzureBlobDeltaLinkStorage(DeltaLinkStorage):
 
         # Priority 4: Default Azurite configuration (localhost fallback)
         logging.info(
-            "Azure Blob Storage: Using Azurite emulator (localhost:10000) - local development fallback"
+            "Azure Blob Storage: Using Azurite emulator "
+            "(localhost:10000) - local development fallback"
+        )
+        azurite_connection = (
+            "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;"
+            "AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVEr"
+            "Cz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;"
+            "BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"
         )
         return {
-            "connection_string": "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;",
+            "connection_string": azurite_connection,
             "account_url": None,
             "credential": None,
         }

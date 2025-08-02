@@ -69,7 +69,7 @@ class AsyncDeltaQueryClient:
                 # Extract from account URL
                 try:
                     account_name = account_url.split("//")[1].split(".")[0]
-                except:
+                except (IndexError, AttributeError):
                     account_name = "from account URL"
             elif connection_string:
                 # Extract from connection string
@@ -78,7 +78,7 @@ class AsyncDeltaQueryClient:
                         account_name = connection_string.split("AccountName=")[1].split(
                             ";"
                         )[0]
-                except:
+                except (IndexError, AttributeError):
                     account_name = "from connection string"
 
             storage_info += f" (Account: {account_name}, Container: {container_name})"
@@ -373,7 +373,7 @@ class AsyncDeltaQueryClient:
                         error_data = json.loads(text) if text else {}
                         if "error" in error_data:
                             error_msg = error_data["error"].get("message", error_msg)
-                    except:
+                    except (ValueError, KeyError, TypeError):
                         pass
 
                     logging.warning(
@@ -480,7 +480,8 @@ class AsyncDeltaQueryClient:
                 await self.delta_link_storage.set(resource, delta_link_resp, metadata)
                 logging.info(
                     f"Saved delta link for {resource} (page {page}) - "
-                    f"{total_new_or_updated} new/updated, {total_deleted} deleted, {total_changed} changed"
+                    f"{total_new_or_updated} new/updated, {total_deleted} deleted, "
+                    f"{total_changed} changed"
                 )
 
             yield objects, page_meta
@@ -623,7 +624,8 @@ class AsyncDeltaQueryClient:
             except RuntimeError:
                 # No running loop, can't clean up async resources
                 logging.warning(
-                    "AsyncDeltaQueryClient destroyed without proper cleanup (no running event loop)"
+                    "AsyncDeltaQueryClient destroyed without proper cleanup "
+                    "(no running event loop)"
                 )
 
 

@@ -10,7 +10,7 @@ from .local_file import LocalFileDeltaLinkStorage
 
 # Azure Blob Storage is optional - only import if dependencies are available
 try:
-    from .azure_blob import AzureBlobDeltaLinkStorage
+    from .azure_blob import AzureBlobDeltaLinkStorage  # noqa: F401
 
     __all__ = [
         "DeltaLinkStorage",
