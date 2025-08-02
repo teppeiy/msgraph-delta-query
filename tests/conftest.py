@@ -5,6 +5,14 @@ import logging
 import asyncio
 from typing import Generator
 
+# Load environment variables for all tests
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+    print("🔑 Loaded environment variables from .env file for tests")
+except ImportError:
+    print("ℹ️  python-dotenv not available, using system environment variables")
+
 
 def pytest_configure(config):
     """Configure pytest with custom settings."""

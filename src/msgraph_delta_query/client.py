@@ -737,6 +737,8 @@ class AsyncDeltaQueryClient:
                 # Respect max_objects limit
                 if max_objects and len(all_objects) >= max_objects:
                     logging.info(f"Reached max_objects limit ({max_objects})")
+                    # Trim the list to the exact limit
+                    all_objects = all_objects[:max_objects]
                     break
 
         end_time = datetime.now(timezone.utc)

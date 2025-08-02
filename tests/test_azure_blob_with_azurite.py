@@ -144,17 +144,18 @@ class TestAzureBlobStorageWithMocking:
             mock_blob_client = AsyncMock()
             
             # Setup the chain with proper async methods
-            mock_service_class.return_value = mock_service_client
+            mock_service_class.from_connection_string.return_value = mock_service_client
             mock_service_client.get_container_client.return_value = mock_container_client
             mock_container_client.get_blob_client.return_value = mock_blob_client
             
             # Configure all methods as AsyncMock for proper async handling
             mock_container_client.exists = AsyncMock(return_value=True)
-            mock_container_client.get_container_properties = AsyncMock()
-            mock_container_client.create_container = AsyncMock()
+            mock_container_client.get_container_properties = AsyncMock(return_value=True)
+            mock_container_client.create_container = AsyncMock(return_value=True)
             mock_blob_client.exists = AsyncMock(return_value=True)
             mock_blob_client.download_blob = AsyncMock()
-            mock_blob_client.upload_blob = AsyncMock()
+            mock_blob_client.upload_blob = AsyncMock(return_value=True)
+            mock_blob_client.delete_blob = AsyncMock(return_value=True)
             
             yield {
                 'service_client': mock_service_client,
@@ -170,8 +171,6 @@ class TestAzureBlobStorageWithMocking:
         except ImportError:
             pytest.skip("Azure Blob Storage dependencies not available")
         
-        mocks = mock_blob_client_chain
-        
         # Test data
         test_delta_link = "https://graph.microsoft.com/v1.0/users/delta?$deltatoken=comprehensive_test"
         test_metadata = {
@@ -182,26 +181,37 @@ class TestAzureBlobStorageWithMocking:
         
         storage = AzureBlobDeltaLinkStorage(container_name="test-comprehensive")
         
-        # Test SET operation - patch the internal methods instead of Azure clients
-        with patch.object(storage, '_get_blob_service_client') as mock_get_client:
-            mock_service_client = AsyncMock()
-            mock_container_client = AsyncMock()
-            mock_blob_client = AsyncMock()
+        # Use the proven direct method mocking approach
+        with patch.object(storage, '_ensure_container_exists', new_callable=AsyncMock) as mock_ensure_container, \
+             patch.object(storage, '_get_blob_service_client', new_callable=AsyncMock) as mock_get_client:
             
-            # Setup the return chain - _get_blob_service_client is async so mock it properly
-            async def mock_get_service_client():
-                return mock_service_client
-            mock_get_client.side_effect = mock_get_service_client
+            # Setup mock clients properly - sync methods are Mock, async methods are AsyncMock
+            mock_blob_client = MagicMock()
+            mock_container_client = MagicMock()  # sync methods
+            mock_service_client = MagicMock()    # sync methods
             
-            mock_service_client.get_container_client.return_value = mock_container_client
-            mock_container_client.get_blob_client.return_value = mock_blob_client
-            
-            # Configure the async methods properly
-            mock_container_client.get_container_properties = AsyncMock()
+            # Configure ALL async blob client methods as AsyncMock
             mock_blob_client.upload_blob = AsyncMock()
             mock_blob_client.download_blob = AsyncMock()
             mock_blob_client.delete_blob = AsyncMock()
             
+            # Make the async method return the mock service client
+            mock_get_client.return_value = mock_service_client
+            mock_service_client.get_container_client.return_value = mock_container_client
+            mock_container_client.get_blob_client.return_value = mock_blob_client
+            
+            # Configure download mock to return proper data
+            mock_download = AsyncMock()
+            test_data = {
+                "delta_link": test_delta_link,
+                "metadata": test_metadata,
+                "last_updated": "2025-08-02T10:00:00.000000+00:00",
+                "resource": "comprehensive_users"
+            }
+            mock_download.readall.return_value = json.dumps(test_data).encode('utf-8')
+            mock_blob_client.download_blob.return_value = mock_download
+            
+            # Test SET operation
             await storage.set("comprehensive_users", test_delta_link, test_metadata)
             
             # Verify upload was called
@@ -214,18 +224,14 @@ class TestAzureBlobStorageWithMocking:
             assert "last_updated" in uploaded_data
             assert "resource" in uploaded_data
             
-            # Mock GET operation
-            mock_download = AsyncMock()
-            mock_download.readall.return_value = json.dumps(uploaded_data).encode('utf-8')
-            mock_blob_client.download_blob.return_value = mock_download
-            
             # Test GET operation
             retrieved_link = await storage.get("comprehensive_users")
             assert retrieved_link == test_delta_link
             
             # Test GET METADATA operation
             retrieved_metadata = await storage.get_metadata("comprehensive_users")
-            assert retrieved_metadata == test_metadata
+            assert retrieved_metadata is not None
+            assert retrieved_metadata["metadata"] == test_metadata
             
             # Test DELETE operation
             await storage.delete("comprehensive_users")
@@ -242,25 +248,26 @@ class TestAzureBlobStorageWithMocking:
         except ImportError:
             pytest.skip("Azure Blob Storage dependencies not available")
         
-        mocks = mock_blob_client_chain
         storage = AzureBlobDeltaLinkStorage(container_name="test-errors")
         
-        # Use the same patching approach for error handling tests
-        with patch.object(storage, '_get_blob_service_client') as mock_get_client:
-            mock_service_client = AsyncMock()
-            mock_container_client = AsyncMock()
+        # Use the proven direct method mocking approach
+        with patch.object(storage, '_ensure_container_exists', new_callable=AsyncMock) as mock_ensure_container, \
+             patch.object(storage, '_get_blob_service_client', new_callable=AsyncMock) as mock_get_client:
+            
+            # Setup mock clients properly - sync methods are Mock, async methods are AsyncMock
             mock_blob_client = AsyncMock()
+            mock_container_client = MagicMock()  # sync methods
+            mock_service_client = MagicMock()    # sync methods
             
-            # Setup the return chain - _get_blob_service_client is async
-            async def mock_get_service_client():
-                return mock_service_client
-            mock_get_client.side_effect = mock_get_service_client
+            # Configure async upload/download methods
+            mock_blob_client.upload_blob = AsyncMock()
+            mock_blob_client.download_blob = AsyncMock()
+            mock_blob_client.delete_blob = AsyncMock()
             
+            # Make the async method return the mock service client
+            mock_get_client.return_value = mock_service_client
             mock_service_client.get_container_client.return_value = mock_container_client
             mock_container_client.get_blob_client.return_value = mock_blob_client
-            
-            # Configure the async methods
-            mock_container_client.get_container_properties = AsyncMock()
             
             # Test 1: Blob not found (should return None gracefully)
             mock_blob_client.download_blob.side_effect = ResourceNotFoundError("Blob not found")
@@ -279,6 +286,7 @@ class TestAzureBlobStorageWithMocking:
             
             # Test 3: Corrupted JSON data
             mock_blob_client.download_blob.side_effect = None  # Reset
+            mock_blob_client.upload_blob.side_effect = None  # Reset
             mock_download = AsyncMock()
             mock_download.readall.return_value = b"invalid json data {broken"
             mock_blob_client.download_blob.return_value = mock_download
@@ -293,31 +301,29 @@ class TestAzureBlobStorageWithMocking:
         """Test container creation and management."""
         try:
             from msgraph_delta_query.storage import AzureBlobDeltaLinkStorage
+            from azure.core.exceptions import ResourceNotFoundError
         except ImportError:
             pytest.skip("Azure Blob Storage dependencies not available")
         
-        mocks = mock_blob_client_chain
-        
-        # Test container creation when it doesn't exist
-        mocks['container_client'].exists.return_value = False
-        
         storage = AzureBlobDeltaLinkStorage(container_name="new-container")
         
-        # Use the same patching approach
-        with patch.object(storage, '_get_blob_service_client') as mock_get_client:
-            mock_service_client = AsyncMock()
-            mock_container_client = AsyncMock()
+        # Use the proven direct method mocking approach
+        with patch.object(storage, '_get_blob_service_client', new_callable=AsyncMock) as mock_get_client:
             
-            # Setup the return chain - _get_blob_service_client is async
-            async def mock_get_service_client():
-                return mock_service_client
-            mock_get_client.side_effect = mock_get_service_client
+            # Setup mock clients properly - sync methods are Mock, async methods are AsyncMock
+            mock_container_client = MagicMock()  # sync methods
+            mock_service_client = MagicMock()    # sync methods
             
+            # Configure async container management methods
+            mock_container_client.get_container_properties = AsyncMock()
+            mock_container_client.create_container = AsyncMock()
+            
+            # Make the async method return the mock service client
+            mock_get_client.return_value = mock_service_client
             mock_service_client.get_container_client.return_value = mock_container_client
             
-            # Configure container doesn't exist initially
+            # Test container creation when it doesn't exist
             mock_container_client.get_container_properties.side_effect = ResourceNotFoundError("Container not found")
-            mock_container_client.create_container = AsyncMock()
             
             # Trigger container creation
             await storage._ensure_container_exists()
