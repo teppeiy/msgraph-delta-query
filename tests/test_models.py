@@ -1,4 +1,22 @@
-"""Tests for the data models module."""
+"""Tests for the data models module.
+
+IMPORTANT TESTING PHILOSOPHY:
+- DO NOT test specific printing formats, output text, or cosmetic formatting
+- Printing formats change frequently and should not break CI pipelines
+- Focus on FUNCTIONAL testing: verify methods exist, execute without errors, and return expected types
+- Test edge cases, parameter validation, and core business logic
+- Avoid testing console output content, emoji usage, or specific text formatting
+- This allows print format evolution without breaking automated tests
+
+For printing methods:
+✅ Test that methods exist and can be called
+✅ Test with different parameter combinations
+✅ Test edge cases (empty strings, special characters, zero values)
+✅ Test return values (should be None for print methods)
+❌ DO NOT test specific output text or formatting
+❌ DO NOT use capsys to verify console output content
+❌ DO NOT test emoji usage or text styling
+"""
 
 import pytest
 from datetime import datetime, timezone, timedelta
@@ -349,3 +367,154 @@ class TestModelsIntegration:
         assert page_metadata.page_change_summary.total == 33
         assert page_metadata.cumulative_change_summary.total == 107
         assert delta_metadata.resource_params.max_objects == 500
+
+
+class TestDeltaQueryMetadataMethods:
+    """Test the new methods in DeltaQueryMetadata (functional tests only).
+    
+    NOTE: These tests intentionally avoid testing console output formatting.
+    Print methods can change their output format frequently without affecting
+    core functionality. We only test that methods execute without errors.
+    """
+
+    def create_test_metadata(self, used_stored_deltalink=True, pages_fetched=1):
+        """Create a test DeltaQueryMetadata instance."""
+        change_summary = ChangeSummary(
+            new_or_updated=10,
+            deleted=2,
+            changed=1,
+            timestamp=datetime.now(timezone.utc)
+        )
+        resource_params = ResourceParams(
+            select=["id", "displayName"],
+            top=100
+        )
+        
+        return DeltaQueryMetadata(
+            changed_count=13,
+            pages_fetched=pages_fetched,
+            duration_seconds=1.5,
+            start_time="2025-08-02T12:00:00Z",
+            end_time="2025-08-02T12:00:01Z",
+            used_stored_deltalink=used_stored_deltalink,
+            change_summary=change_summary,
+            resource_params=resource_params
+        )
+
+    def test_print_sync_results_method_exists(self):
+        """Test print_sync_results method exists and can be called without errors."""
+        metadata = self.create_test_metadata()
+        
+        # Test method exists and doesn't raise an exception
+        try:
+            metadata.print_sync_results("Test Resource")
+        except Exception as e:
+            pytest.fail(f"print_sync_results raised an exception: {e}")
+
+    def test_print_compact_results_method_exists(self):
+        """Test print_compact_results method exists and can be called without errors.""" 
+        metadata = self.create_test_metadata()
+        
+        # Test method exists and doesn't raise an exception
+        try:
+            metadata.print_compact_results("Test Resource")
+        except Exception as e:
+            pytest.fail(f"print_compact_results raised an exception: {e}")
+
+    def test_print_methods_with_different_parameters(self):
+        """Test print methods work with different metadata configurations."""
+        # Test with incremental sync
+        incremental_metadata = self.create_test_metadata(
+            used_stored_deltalink=True, 
+            pages_fetched=1
+        )
+        
+        # Test with full sync and multiple pages
+        full_metadata = self.create_test_metadata(
+            used_stored_deltalink=False, 
+            pages_fetched=5
+        )
+        
+        # Test all combinations don't raise exceptions
+        try:
+            incremental_metadata.print_sync_results("Users")
+            incremental_metadata.print_compact_results("Users")
+            full_metadata.print_sync_results("Applications")
+            full_metadata.print_compact_results("Applications")
+        except Exception as e:
+            pytest.fail(f"Print methods raised an exception with different parameters: {e}")
+
+    def test_print_methods_with_edge_cases(self):
+        """Test print methods handle edge cases without crashing."""
+        metadata = self.create_test_metadata()
+        
+        # Test with various resource name formats
+        test_cases = [
+            "",  # Empty string
+            "Very Long Resource Name With Many Words And Characters",  # Long name
+            "Resource-Name_With@Special#Characters",  # Special characters
+            "123Numbers456",  # Numbers
+            "CamelCaseResourceName",  # CamelCase
+            "lowercase_with_underscores",  # lowercase with underscores
+        ]
+        
+        for resource_name in test_cases:
+            try:
+                metadata.print_sync_results(resource_name)
+                metadata.print_compact_results(resource_name)
+            except Exception as e:
+                pytest.fail(f"Print methods failed with resource name '{resource_name}': {e}")
+
+    def test_print_methods_with_zero_changes(self):
+        """Test print methods work correctly when there are no changes."""
+        change_summary = ChangeSummary(
+            new_or_updated=0,
+            deleted=0,
+            changed=0,
+            timestamp=None
+        )
+        resource_params = ResourceParams()
+        
+        metadata = DeltaQueryMetadata(
+            changed_count=0,
+            pages_fetched=1,
+            duration_seconds=0.8,
+            start_time="2025-08-02T12:00:00Z",
+            end_time="2025-08-02T12:00:01Z",
+            used_stored_deltalink=True,
+            change_summary=change_summary,
+            resource_params=resource_params
+        )
+        
+        # Test methods don't crash with zero changes
+        try:
+            metadata.print_sync_results("Empty Resource")
+            metadata.print_compact_results("Empty Resource")
+        except Exception as e:
+            pytest.fail(f"Print methods failed with zero changes: {e}")
+
+    def test_print_summary_method_exists_on_change_summary(self):
+        """Test that ChangeSummary.print_summary method exists and works."""
+        change_summary = ChangeSummary(
+            new_or_updated=5,
+            deleted=2,
+            changed=1,
+            timestamp=datetime.now(timezone.utc)
+        )
+        
+        try:
+            change_summary.print_summary("Test Changes")
+        except Exception as e:
+            pytest.fail(f"ChangeSummary.print_summary raised an exception: {e}")
+
+    def test_methods_return_none(self):
+        """Test that print methods return None (they are void methods)."""
+        metadata = self.create_test_metadata()
+        
+        result1 = metadata.print_sync_results("Test")
+        result2 = metadata.print_compact_results("Test")
+        result3 = metadata.change_summary.print_summary("Test")
+        
+        assert result1 is None
+        assert result2 is None
+        assert result3 is None

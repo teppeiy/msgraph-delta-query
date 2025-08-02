@@ -31,7 +31,7 @@ async def main():
     logging.basicConfig(level=logging.WARNING)
 
     # Setup with deltalinks folder at project root (parent of examples directory)
-    storage = LocalFileDeltaLinkStorage(folder="../deltalinks")
+    storage = LocalFileDeltaLinkStorage(folder="deltalinks")
     client = AsyncDeltaQueryClient(delta_link_storage=storage)
 
     try:
@@ -49,12 +49,8 @@ async def main():
             top=100  # Process in smaller batches
         )
 
-        # Display results
-        sync_type = "Incremental" if metadata.used_stored_deltalink else "Full"
-        print(f"✓ Sync completed in {metadata.duration_seconds:.2f} seconds")
-        print(f"✓ {metadata.change_summary}")
-        print(f"✓ Sync type: {sync_type}")
-        print(f"💾 Delta link saved for future incremental syncs")
+        # Display results using the comprehensive sync results method
+        metadata.print_sync_results("Service Principals")
 
         # Show sample data
         if service_principals:

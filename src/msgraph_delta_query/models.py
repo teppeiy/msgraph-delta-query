@@ -165,3 +165,26 @@ class DeltaQueryMetadata:
     used_stored_deltalink: bool
     change_summary: ChangeSummary
     resource_params: ResourceParams
+
+    def print_sync_results(self, resource_name: str = "Objects") -> None:
+        """Print complete sync results including timing, type, and change summary."""
+        # Print basic sync info
+        print(f"✓ Sync completed in {self.duration_seconds:.2f} seconds")
+        sync_type = "Incremental" if self.used_stored_deltalink else "Full"
+        print(f"✓ Sync type: {sync_type}")
+        if self.pages_fetched > 1:
+            print(f"✓ Pages processed: {self.pages_fetched}")
+        
+        # Print change summary using the built-in method
+        self.change_summary.print_summary(f"{resource_name} Changes")
+        
+        # Print storage info
+        if self.used_stored_deltalink:
+            print(f"💾 Delta link used for incremental sync")
+        else:
+            print(f"💾 Delta link saved for future incremental syncs")
+
+    def print_compact_results(self, resource_name: str = "Objects") -> None:
+        """Print a compact one-line summary of sync results."""
+        sync_type = "Incremental" if self.used_stored_deltalink else "Full"
+        print(f"✓ {sync_type} sync completed in {self.duration_seconds:.2f}s - {self.change_summary.total} changes ({self.change_summary.new_or_updated} new/updated, {self.change_summary.deleted} deleted, {self.change_summary.changed} changed)")

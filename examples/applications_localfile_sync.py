@@ -37,8 +37,8 @@ async def sync_applications():
     print("=== Application Sync with Local Storage ===")
     print(f"Started: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}\n")
 
-    # Setup with deltalinks folder at project root (parent of examples directory)
-    client = AsyncDeltaQueryClient(delta_link_storage=LocalFileDeltaLinkStorage(folder="../deltalinks"))
+    # Setup with deltalinks folder
+    client = AsyncDeltaQueryClient(delta_link_storage=LocalFileDeltaLinkStorage(folder="deltalinks"))
 
     try:
         print("Syncing applications...")
@@ -57,12 +57,8 @@ async def sync_applications():
                         top=5  # Very small page size to see pagination behavior
         )
 
-        # Show results
-        print(f"✓ Sync completed in {metadata.duration_seconds:.2f}s")
-        print(f"✓ {metadata.change_summary}")
-        
-        sync_type = "Incremental" if metadata.used_stored_deltalink else "Full"
-        print(f"✓ Sync type: {sync_type}")
+        # Show results using the comprehensive sync results method
+        metadata.print_sync_results("Applications")
 
         # Show sample applications
         if applications:

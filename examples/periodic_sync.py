@@ -133,33 +133,27 @@ class GraphSyncService:
                 top=1000
             )
             
-            # Report results
-            print(f"✓ Completed in {metadata.duration_seconds:.2f}s")
-            print(f"✓ {metadata.change_summary}")
+            # Report results using the comprehensive sync results method
+            metadata.print_sync_results(self.resource_type.title())
             
-            sync_type = "Incremental" if metadata.used_stored_deltalink else "Full"
-            print(f"✓ Type: {sync_type} sync")
-            
-            # Show changes if any
-            if objects:
+            # Show sample objects if any changes detected
+            if metadata.change_summary.total > 0:
                 new_objects = [obj for obj in objects if not obj.get("@removed")]
                 deleted_objects = [obj for obj in objects if obj.get("@removed")]
                 
                 if new_objects:
-                    print(f"📥 New/Updated: {len(new_objects)} {self.resource_type}")
+                    print(f"\n📥 Sample New/Updated {self.resource_type}:")
                     for obj in new_objects[:3]:
                         print(f"   {self._format_object_display(obj)}")
                     if len(new_objects) > 3:
                         print(f"   ... and {len(new_objects) - 3} more")
                 
                 if deleted_objects:
-                    print(f"🗑️  Deleted: {len(deleted_objects)} {self.resource_type}")
+                    print(f"\n🗑️  Sample Deleted {self.resource_type}:")
                     for obj in deleted_objects[:3]:
                         print(f"   {self._format_object_display(obj)}")
                     if len(deleted_objects) > 3:
                         print(f"   ... and {len(deleted_objects) - 3} more")
-            else:
-                print("📋 No changes detected")
             
             return objects
             

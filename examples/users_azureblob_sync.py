@@ -45,12 +45,8 @@ async def sync_users():
             top=1000
         )
 
-        # Show results
-        print(f"✓ Sync completed in {metadata.duration_seconds:.2f}s")
-        print(f"✓ {metadata.change_summary}")
-        
-        sync_type = "Incremental" if metadata.used_stored_deltalink else "Full"
-        print(f"✓ Sync type: {sync_type}")
+        # Show results using the comprehensive sync results method
+        metadata.print_sync_results("Users")
 
         # Show sample users
         if users:
