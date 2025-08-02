@@ -257,22 +257,25 @@ class AsyncDeltaQueryClient:
                 "raw_response_size": len(text)
             }
 
+            # Save delta link whenever we get one, not just at the end
+            # This ensures it's saved even if the user breaks early from the loop
+            if delta_link_resp:
+                metadata = {
+                    "last_sync": datetime.now(timezone.utc).isoformat(),
+                    "total_pages": page,
+                    "resource_params": {
+                        "select": select,
+                        "filter": filter,
+                        "top": top
+                    }
+                }
+                await self.delta_link_storage.set(resource, delta_link_resp, metadata)
+                logging.info(f"Saved delta link for {resource} (page {page})")
+
             yield objects, page_meta
 
             if not next_link:
-                # Save final delta link
-                if delta_link_resp:
-                    metadata = {
-                        "last_sync": datetime.now(timezone.utc).isoformat(),
-                        "total_pages": page,
-                        "resource_params": {
-                            "select": select,
-                            "filter": filter,
-                            "top": top
-                        }
-                    }
-                    await self.delta_link_storage.set(resource, delta_link_resp, metadata)
-                    logging.info(f"Saved delta link for {resource}")
+                # We've reached the end naturally
                 break
 
     async def delta_query_all(
