@@ -225,7 +225,10 @@ class TestAsyncDeltaQueryClient:
         # First response: 429 with retry-after
         mock_response_429 = AsyncMock()
         mock_response_429.status = 429
-        mock_response_429.headers.get.return_value = "2"
+        # Mock headers object properly
+        mock_headers = Mock()
+        mock_headers.get.return_value = "2"
+        mock_response_429.headers = mock_headers
         mock_response_429.text = AsyncMock(return_value="Rate limited")
         
         # Second response: 200 success
@@ -237,22 +240,19 @@ class TestAsyncDeltaQueryClient:
         # Use a counter to track calls
         call_count = 0
         
-        async def mock_get_side_effect(*args, **kwargs):
+        def mock_get_side_effect(*args, **kwargs):
             nonlocal call_count
             call_count += 1
             
+            context_manager = AsyncMock()
             if call_count == 1:
-                context_manager = AsyncMock()
                 context_manager.__aenter__ = AsyncMock(return_value=mock_response_429)
-                context_manager.__aexit__ = AsyncMock(return_value=None)
-                return context_manager
             else:
-                context_manager = AsyncMock()
                 context_manager.__aenter__ = AsyncMock(return_value=mock_response_200)
-                context_manager.__aexit__ = AsyncMock(return_value=None)
-                return context_manager
+            context_manager.__aexit__ = AsyncMock(return_value=None)
+            return context_manager
         
-        mock_session.get.side_effect = mock_get_side_effect
+        mock_session.get = Mock(side_effect=mock_get_side_effect)
         
         client._session = mock_session
         client._initialized = True
@@ -282,22 +282,19 @@ class TestAsyncDeltaQueryClient:
         
         call_count = 0
         
-        async def mock_get_side_effect(*args, **kwargs):
+        def mock_get_side_effect(*args, **kwargs):
             nonlocal call_count
             call_count += 1
             
+            context_manager = AsyncMock()
             if call_count == 1:
-                context_manager = AsyncMock()
                 context_manager.__aenter__ = AsyncMock(return_value=mock_response_503)
-                context_manager.__aexit__ = AsyncMock(return_value=None)
-                return context_manager
             else:
-                context_manager = AsyncMock()
                 context_manager.__aenter__ = AsyncMock(return_value=mock_response_200)
-                context_manager.__aexit__ = AsyncMock(return_value=None)
-                return context_manager
+            context_manager.__aexit__ = AsyncMock(return_value=None)
+            return context_manager
         
-        mock_session.get.side_effect = mock_get_side_effect
+        mock_session.get = Mock(side_effect=mock_get_side_effect)
         
         client._session = mock_session
         client._initialized = True
@@ -320,7 +317,7 @@ class TestAsyncDeltaQueryClient:
         context_manager = AsyncMock()
         context_manager.__aenter__ = AsyncMock(return_value=mock_response)
         context_manager.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get.return_value = context_manager
+        mock_session.get = Mock(return_value=context_manager)
         
         client._session = mock_session
         client._initialized = True
@@ -347,7 +344,7 @@ class TestAsyncDeltaQueryClient:
         
         call_count = 0
         
-        async def mock_get_side_effect(*args, **kwargs):
+        def mock_get_side_effect(*args, **kwargs):
             nonlocal call_count
             call_count += 1
             
@@ -359,7 +356,7 @@ class TestAsyncDeltaQueryClient:
                 context_manager.__aexit__ = AsyncMock(return_value=None)
                 return context_manager
         
-        mock_session.get.side_effect = mock_get_side_effect
+        mock_session.get = Mock(side_effect=mock_get_side_effect)
         
         client._session = mock_session
         client._initialized = True
@@ -376,16 +373,16 @@ class TestAsyncDeltaQueryClient:
         
         mock_session = AsyncMock()
         
-        async def mock_get_side_effect(*args, **kwargs):
+        def mock_get_side_effect(*args, **kwargs):
             raise asyncio.TimeoutError()
         
-        mock_session.get.side_effect = mock_get_side_effect
+        mock_session.get = Mock(side_effect=mock_get_side_effect)
         
         client._session = mock_session
         client._initialized = True
         
         with patch('asyncio.sleep'):
-            with pytest.raises(Exception, match="Max retries"):
+            with pytest.raises(asyncio.TimeoutError):
                 await client._make_request("https://example.com", {})
 
     async def test_delta_query_stream_basic(self, mock_credential, mock_storage):

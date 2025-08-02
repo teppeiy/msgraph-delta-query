@@ -54,17 +54,19 @@ class AsyncDeltaQueryClient:
             loop = asyncio.get_running_loop()
             # Only add the cleanup callback once
             if not hasattr(loop, '_delta_client_cleanup_added'):
-                loop.add_signal_handler = getattr(loop, 'add_signal_handler', lambda *args: None)
-                try:
-                    import signal
-                    for sig in [signal.SIGTERM, signal.SIGINT]:
-                        try:
-                            loop.add_signal_handler(sig, lambda: asyncio.create_task(_cleanup_all_clients()))
-                        except (NotImplementedError, OSError):
-                            pass  # Signal handlers not supported on this platform
-                except ImportError:
-                    pass
-                loop._delta_client_cleanup_added = True
+                # Check if signal handler method exists before using it
+                if hasattr(loop, 'add_signal_handler'):
+                    try:
+                        import signal
+                        for sig in [signal.SIGTERM, signal.SIGINT]:
+                            try:
+                                loop.add_signal_handler(sig, lambda: asyncio.create_task(_cleanup_all_clients()))
+                            except (NotImplementedError, OSError):
+                                pass  # Signal handlers not supported on this platform
+                    except ImportError:
+                        pass
+                # Mark that we've attempted to set up cleanup (use setattr to avoid pylint warning)
+                setattr(loop, '_delta_client_cleanup_added', True)
         except RuntimeError:
             pass  # No running loop
 
@@ -114,6 +116,8 @@ class AsyncDeltaQueryClient:
     async def get_token(self) -> str:
         """Get access token for Microsoft Graph API."""
         await self._initialize()
+        if self.credential is None:
+            raise ValueError("Credential is not initialized")
         try:
             token = await self.credential.get_token("https://graph.microsoft.com/.default")
             return token.token
@@ -128,6 +132,9 @@ class AsyncDeltaQueryClient:
     ) -> Tuple[int, str, Dict[str, Any]]:
         """Make HTTP request with rate limiting and error handling."""
         await self._initialize()
+        
+        if self._session is None:
+            raise ValueError("HTTP session is not initialized")
         
         async with self.semaphore:
             backoff, max_backoff = 1, 60
