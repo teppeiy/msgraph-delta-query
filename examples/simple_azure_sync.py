@@ -83,10 +83,8 @@ async def sync_users():
 
 async def main():
     """Load environment and run sync."""
-    # Load .env file if it exists
-    env_file = Path(".env")
-    if env_file.exists():
-        load_dotenv(env_file)
+    # Load .env
+    load_dotenv()
 
     # Set up minimal logging
     logging.basicConfig(level=logging.WARNING)

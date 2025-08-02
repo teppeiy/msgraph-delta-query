@@ -213,6 +213,7 @@ class AsyncDeltaQueryClient:
         top: Optional[int] = None,
         deltatoken: Optional[str] = None,
         deltatoken_latest: bool = False,
+        skiptoken: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Build query parameters for the delta request."""
         params = {}
@@ -227,6 +228,8 @@ class AsyncDeltaQueryClient:
             params["deltatoken"] = "latest"
         elif deltatoken:
             params["deltatoken"] = deltatoken
+        if skiptoken:
+            params["skiptoken"] = skiptoken
             
         return params
 
@@ -277,6 +280,20 @@ class AsyncDeltaQueryClient:
             logging.warning(f"Failed to extract delta token from link: {e}")
             return None
 
+    def _extract_skiptoken_from_url(self, url: Optional[str]) -> Optional[str]:
+        """Extract skiptoken from a URL."""
+        if not url:
+            return None
+            
+        try:
+            parsed = urllib.parse.urlparse(url)
+            qs = urllib.parse.parse_qs(parsed.query)
+            st = qs.get("$skiptoken") or qs.get("skiptoken")
+            return st[0] if st else None
+        except Exception as e:
+            logging.warning(f"Failed to extract skiptoken from URL: {e}")
+            return None
+
     async def _execute_delta_request(
         self,
         request_builder,
@@ -299,10 +316,14 @@ class AsyncDeltaQueryClient:
             # Create query parameters using the SDK's classes
             query_params_obj = QueryParamsClass()
             
-            # Set query parameters
+            # Set query parameters - for pagination with skiptoken, we need special handling
             for key, value in query_params.items():
                 if hasattr(query_params_obj, key) and value is not None:
                     setattr(query_params_obj, key, value)
+                elif key == "skiptoken":
+                    # For skiptoken, we'll need to fall back to using the original approach
+                    # but still through the Graph Service Client when possible
+                    logging.debug(f"Handling skiptoken pagination: {value}")
             
             # Create request configuration
             request_config = RequestConfigClass(query_parameters=query_params_obj)
@@ -397,6 +418,7 @@ class AsyncDeltaQueryClient:
         previous_sync_timestamp = None
         used_stored_deltalink = False
         deltatoken = None
+        stored_delta_link = None
         
         if not delta_link and not deltatoken_latest:
             stored_delta_link = await self.delta_link_storage.get(resource)
@@ -419,24 +441,76 @@ class AsyncDeltaQueryClient:
         # Get the appropriate request builder
         request_builder = self._get_delta_request_builder(resource)
         
-        # Build initial query parameters
-        query_params = self._build_query_parameters(
-            select=select,
-            filter=filter, 
-            top=top,
-            deltatoken=deltatoken,
-            deltatoken_latest=deltatoken_latest
-        )
-
-        # Execute initial request
+        # Execute initial request - handle stored delta link vs new sync differently
         try:
-            response, fallback_occurred = await self._execute_delta_request(
-                request_builder,
-                query_params,
-                fallback_to_full_sync,
-                used_stored_deltalink,
-                resource
-            )
+            if used_stored_deltalink and stored_delta_link:
+                # Use the stored delta link directly - it contains all original parameters
+                logging.info(f"Using stored delta link for {resource} incremental sync")
+                
+                try:
+                    # Create a request info object for the stored delta link URL
+                    from kiota_abstractions.request_information import RequestInformation
+                    from kiota_abstractions.method import Method
+                    from msgraph.generated.applications.delta.delta_get_response import DeltaGetResponse
+                    
+                    request_info = RequestInformation()
+                    request_info.http_method = Method.GET
+                    request_info.url_template = stored_delta_link
+                    
+                    # Ensure the graph client and request adapter are available
+                    if not self._graph_client or not self._graph_client.request_adapter:
+                        raise ValueError("Graph client or request adapter not available")
+                    
+                    # Use the request adapter to send the request directly to the stored delta link
+                    response = await self._graph_client.request_adapter.send_async(
+                        request_info, DeltaGetResponse, {}
+                    )
+                    fallback_occurred = False
+                    
+                except Exception as e:
+                    if fallback_to_full_sync:
+                        logging.warning(f"Stored delta link failed ({e}), falling back to full sync with current parameters")
+                        
+                        # Clear the invalid stored delta link
+                        await self.delta_link_storage.delete(resource)
+                        used_stored_deltalink = False
+                        
+                        # Fall back to new sync with current parameters
+                        query_params = self._build_query_parameters(
+                            select=select,
+                            filter=filter, 
+                            top=top,
+                            deltatoken_latest=deltatoken_latest
+                        )
+                        
+                        response, fallback_occurred = await self._execute_delta_request(
+                            request_builder,
+                            query_params,
+                            fallback_to_full_sync,
+                            False,  # Not using stored delta link anymore
+                            resource
+                        )
+                    else:
+                        raise e
+                
+            else:
+                # Build query parameters for new sync (no stored delta link)
+                query_params = self._build_query_parameters(
+                    select=select,
+                    filter=filter, 
+                    top=top,
+                    deltatoken=deltatoken,
+                    deltatoken_latest=deltatoken_latest
+                )
+                
+                # Execute new sync request
+                response, fallback_occurred = await self._execute_delta_request(
+                    request_builder,
+                    query_params,
+                    fallback_to_full_sync,
+                    used_stored_deltalink,
+                    resource
+                )
             
             if fallback_occurred:
                 used_stored_deltalink = False  # No longer using stored delta link after fallback
@@ -478,11 +552,23 @@ class AsyncDeltaQueryClient:
 
             # Get delta link from response
             delta_link_resp = None
-            if hasattr(response, 'odata_delta_link'):
-                delta_link_resp = response.odata_delta_link
-                
+            
+            # Try different delta link attribute names
+            delta_link_attrs = ['odata_delta_link', 'deltaLink', 'delta_link', '@odata.deltaLink']
+            for attr in delta_link_attrs:
+                value = getattr(response, attr, None)
+                if value:
+                    delta_link_resp = value
+                    break
+            else:
+                # Check additional_data for delta link
+                if hasattr(response, 'additional_data') and response.additional_data:
+                    for key in ['@odata.deltaLink', 'deltaLink', 'odata_delta_link']:
+                        if key in response.additional_data:
+                            delta_link_resp = response.additional_data[key]
+                            break
             # Check for next page
-            has_next_page = hasattr(response, 'odata_next_link') and response.odata_next_link
+            has_next_page = bool(hasattr(response, 'odata_next_link') and response.odata_next_link)
 
             page_meta = PageMetadata(
                 page=page,
@@ -525,6 +611,8 @@ class AsyncDeltaQueryClient:
                     f"{total_new_or_updated} new/updated, {total_deleted} deleted, "
                     f"{total_changed} changed"
                 )
+            else:
+                logging.debug(f"No delta link found on page {page} for {resource}")
 
             yield objects, page_meta
 
@@ -532,10 +620,37 @@ class AsyncDeltaQueryClient:
             if not has_next_page:
                 break
                 
-            # For next page, we need to handle pagination differently
-            # The Graph SDK should handle this automatically, but we need to check
-            # For now, break since pagination handling needs more investigation
-            break
+            # For delta queries, follow pagination using the next URL directly
+            next_url = response.odata_next_link
+            logging.debug(f"Following next page URL: {next_url}")
+            
+            try:
+                # Use the Graph SDK's request adapter to make a direct request to the next URL
+                # This preserves all the parameters encoded in the next_url
+                logging.info(f"Calling delta query for resource: {resource} page {page + 1}")
+                
+                # Create a request info object for the next URL
+                from kiota_abstractions.request_information import RequestInformation
+                from kiota_abstractions.method import Method
+                from msgraph.generated.applications.delta.delta_get_response import DeltaGetResponse
+                
+                request_info = RequestInformation()
+                request_info.http_method = Method.GET
+                request_info.url_template = next_url
+                
+                # Ensure the graph client and request adapter are available
+                if not self._graph_client or not self._graph_client.request_adapter:
+                    logging.error("Graph client or request adapter not available")
+                    break
+                
+                # Use the request adapter to send the request
+                response = await self._graph_client.request_adapter.send_async(
+                    request_info, DeltaGetResponse, {}
+                )
+                    
+            except Exception as e:
+                logging.error(f"Error fetching next page: {e}")
+                break
 
     async def delta_query_all(
         self,
@@ -593,16 +708,15 @@ class AsyncDeltaQueryClient:
                 except Exception:
                     pass
 
-        try:
-            async for objects, page_meta in self.delta_query_stream(
-                resource,
-                select,
-                filter,
-                delta_link,
-                deltatoken_latest,
-                top,
-                fallback_to_full_sync,
-            ):
+        async for objects, page_meta in self.delta_query_stream(
+            resource,
+            select,
+            filter,
+            delta_link,
+            deltatoken_latest,
+            top,
+            fallback_to_full_sync,
+        ):
                 all_objects.extend(objects)
                 total_pages = page_meta.page
                 final_delta_link = page_meta.delta_link or final_delta_link
@@ -622,13 +736,8 @@ class AsyncDeltaQueryClient:
 
                 # Respect max_objects limit
                 if max_objects and len(all_objects) >= max_objects:
-                    all_objects = all_objects[:max_objects]
                     logging.info(f"Reached max_objects limit ({max_objects})")
                     break
-                    
-        finally:
-            # Auto-cleanup after each major operation
-            await self._internal_close()
 
         end_time = datetime.now(timezone.utc)
         duration = (end_time - start_time).total_seconds()
@@ -683,8 +792,30 @@ class AsyncDeltaQueryClient:
 
 
 async def example_usage() -> None:
-    """Example of simplified usage with Microsoft Graph SDK."""
-
+    """
+    Example of simplified usage with Microsoft Graph SDK.
+    
+    This example demonstrates how authentication works with DefaultAzureCredential:
+    1. Environment variables (AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID)
+    2. Managed Identity (in Azure environments)
+    3. Azure CLI (az login)
+    4. Visual Studio/VS Code
+    5. Azure PowerShell
+    
+    For local development, set these environment variables:
+    - AZURE_CLIENT_ID=your-app-registration-client-id
+    - AZURE_CLIENT_SECRET=your-app-registration-client-secret
+    - AZURE_TENANT_ID=your-azure-tenant-id
+    """
+    
+    # Load environment variables if using a .env file
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+        print("📄 Loaded environment variables from .env file")
+    except ImportError:
+        print("ℹ️  python-dotenv not available, using system environment variables")
+    
     # Simple instantiation with Microsoft Graph SDK
     client = AsyncDeltaQueryClient()
 

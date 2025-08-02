@@ -130,10 +130,8 @@ async def sync_all_resources():
 
 async def main():
     """Load environment and run multi-resource sync."""
-    # Load .env file if it exists
-    env_file = Path(".env")
-    if env_file.exists():
-        load_dotenv(env_file)
+    # Load .env
+    load_dotenv()
 
     # Set up minimal logging
     logging.basicConfig(level=logging.WARNING)

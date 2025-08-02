@@ -4,6 +4,18 @@ Simple Application Sync with Local Storage
 This example shows how to sync Microsoft Graph applications using local file storage.
 Delta links are automatically stored in a local 'deltalinks' folder.
 
+Authentication Options (DefaultAzureCredential tries these in order):
+1. Environment Variables: AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID
+2. Managed Identity (when running in Azure)
+3. Azure CLI (az login)
+4. Visual Studio / VS Code
+5. Azure PowerShell
+
+For local development:
+- Copy .env.example to .env and fill in your Azure App Registration details
+- Or use: az login
+- Or set environment variables directly
+
 Perfect for:
 - Monitoring application changes
 - Security auditing
@@ -17,6 +29,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from dotenv import load_dotenv
 from msgraph_delta_query import AsyncDeltaQueryClient
+from msgraph_delta_query.storage import LocalFileDeltaLinkStorage
 
 
 async def sync_applications():
@@ -24,8 +37,9 @@ async def sync_applications():
     print("=== Application Sync with Local Storage ===")
     print(f"Started: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}\n")
 
-    # Simple client setup - uses local file storage by default
-    client = AsyncDeltaQueryClient()
+    # Setup with deltalinks folder at project root (parent of examples directory)
+    storage = LocalFileDeltaLinkStorage(folder="../deltalinks")
+    client = AsyncDeltaQueryClient(delta_link_storage=storage)
 
     try:
         print("Syncing applications...")
@@ -41,7 +55,7 @@ async def sync_applications():
                 "publisherDomain",
                 "signInAudience"
             ],
-            top=1000
+                        top=5  # Very small page size to see pagination behavior
         )
 
         # Show results
@@ -58,11 +72,12 @@ async def sync_applications():
                 if app.get("@removed"):
                     print(f"   🗑️  [DELETED] {app.get('id', 'N/A')}")
                 else:
-                    display_name = app.get('displayName', 'N/A')
-                    app_id = app.get('appId', 'N/A')
-                    publisher = app.get('publisherDomain', 'N/A')
-                    audience = app.get('signInAudience', 'N/A')
-                    created = app.get('createdDateTime', 'N/A')
+                    # The Graph SDK returns snake_case keys instead of camelCase
+                    display_name = app.get('display_name') or app.get('displayName', 'N/A')
+                    app_id = app.get('app_id') or app.get('appId', 'N/A')
+                    publisher = app.get('publisher_domain') or app.get('publisherDomain', 'N/A')
+                    audience = app.get('sign_in_audience') or app.get('signInAudience', 'N/A')
+                    created = app.get('created_date_time') or app.get('createdDateTime', 'N/A')
                     
                     print(f"   📱 {display_name}")
                     print(f"      App ID: {app_id}")
@@ -90,13 +105,10 @@ async def sync_applications():
 
 async def main():
     """Load environment and run sync."""
-    # Load .env file if it exists
-    env_file = Path(".env")
-    if env_file.exists():
-        load_dotenv(env_file)
-
+    # Load .env
+    load_dotenv()
     # Set up minimal logging
-    logging.basicConfig(level=logging.WARNING)
+    logging.basicConfig(level=logging.INFO)
 
     # Run the sync
     applications = await sync_applications()

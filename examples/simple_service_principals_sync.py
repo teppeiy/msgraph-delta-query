@@ -16,6 +16,7 @@ import logging
 from pathlib import Path
 from dotenv import load_dotenv
 from msgraph_delta_query import AsyncDeltaQueryClient
+from msgraph_delta_query.storage import LocalFileDeltaLinkStorage
 
 
 async def main():
@@ -23,16 +24,15 @@ async def main():
     print("=== Service Principals Sync Example ===")
     print("Syncing service principals from Microsoft Graph...")
 
-    # Load .env file if it exists
-    env_file = Path(".env")
-    if env_file.exists():
-        load_dotenv(env_file)
+    # Load .env
+    load_dotenv()
 
     # Set up minimal logging
     logging.basicConfig(level=logging.WARNING)
 
-    # Simple client setup - uses local file storage by default
-    client = AsyncDeltaQueryClient()
+    # Setup with deltalinks folder at project root (parent of examples directory)
+    storage = LocalFileDeltaLinkStorage(folder="../deltalinks")
+    client = AsyncDeltaQueryClient(delta_link_storage=storage)
 
     try:
         # Sync service principals with relevant fields

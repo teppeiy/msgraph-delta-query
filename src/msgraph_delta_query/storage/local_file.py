@@ -6,6 +6,22 @@ import os
 import json
 import logging
 import hashlib
+from pathlib import Path
+from typing import Optional, Dict
+from datetime import datetime, timezone
+
+from .base import DeltaLinkStorage
+
+
+"""
+Local file-based delta link storage implementation.
+"""
+
+import os
+import json
+import logging
+import hashlib
+from pathlib import Path
 from typing import Optional, Dict
 from datetime import datetime, timezone
 
@@ -15,14 +31,27 @@ from .base import DeltaLinkStorage
 class LocalFileDeltaLinkStorage(DeltaLinkStorage):
     """Stores delta links in a local JSON file per resource with metadata."""
 
-    def __init__(self, folder: str = "deltalinks"):
+    def __init__(self, folder: Optional[str] = None):
         """
         Initialize local file storage.
 
         Args:
-            folder: Directory to store delta link files (default: "deltalinks")
+            folder: Directory to store delta link files. If None, defaults to
+                   "deltalinks" in the current working directory. To always use
+                   the same location regardless of where scripts run from, 
+                   pass an absolute path like "/path/to/project/deltalinks".
         """
-        self.folder = folder
+        if folder is None:
+            # Simple default: deltalinks folder in current working directory
+            # This is predictable and doesn't require complex project detection
+            self.folder = "deltalinks"
+        else:
+            # If folder is provided, use it as-is (can be relative or absolute)  
+            self.folder = folder
+            
+        # Store the folder name for logging
+        self.deltalinks_dir = Path(self.folder).name
+        
         os.makedirs(self.folder, exist_ok=True)
 
     def _get_resource_path(self, resource: str) -> str:

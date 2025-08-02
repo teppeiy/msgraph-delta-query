@@ -164,12 +164,10 @@ class PeriodicUserSync:
 async def main():
     """Main function to run periodic sync."""
     # Load environment variables
-    env_file = Path(".env")
-    if env_file.exists():
-        load_dotenv(env_file)
-        print("Loaded environment variables from .env file")
-    else:
-        print("No .env file found - using environment variables")
+    load_dotenv()
+    print("ℹ️  No .env file found, using system environment variables" if not Path(".env").exists() else "✅ Loaded .env file")
+    print("💡 Create a .env file in the root directory with AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID")
+    print("   or use Azure CLI (az login) or managed identity in Azure")
 
     # Set up logging (optional)
     logging.basicConfig(

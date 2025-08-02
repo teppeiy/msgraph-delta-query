@@ -134,9 +134,7 @@ class UserSyncService:
 async def main():
     """Run the periodic sync service."""
     # Load environment
-    env_file = Path(".env")
-    if env_file.exists():
-        load_dotenv(env_file)
+    load_dotenv()
 
     # Minimal logging
     logging.basicConfig(level=logging.WARNING)
