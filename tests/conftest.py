@@ -11,7 +11,7 @@ def pytest_configure(config):
     # Set up logging for tests
     logging.basicConfig(
         level=logging.DEBUG,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
 
 
@@ -28,9 +28,9 @@ def cleanup_deltalinks():
     """Clean up any deltalinks folder created during tests."""
     import os
     import shutil
-    
+
     yield  # Run the test
-    
+
     # Clean up after test
     if os.path.exists("deltalinks"):
         try:

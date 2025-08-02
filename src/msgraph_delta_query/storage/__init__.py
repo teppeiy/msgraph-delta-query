@@ -11,13 +11,11 @@ from .local_file import LocalFileDeltaLinkStorage
 # Azure Blob Storage is optional - only import if dependencies are available
 try:
     from .azure_blob import AzureBlobDeltaLinkStorage
+
     __all__ = [
-        'DeltaLinkStorage',
-        'LocalFileDeltaLinkStorage', 
-        'AzureBlobDeltaLinkStorage'
+        "DeltaLinkStorage",
+        "LocalFileDeltaLinkStorage",
+        "AzureBlobDeltaLinkStorage",
     ]
 except ImportError:
-    __all__ = [
-        'DeltaLinkStorage',
-        'LocalFileDeltaLinkStorage'
-    ]
+    __all__ = ["DeltaLinkStorage", "LocalFileDeltaLinkStorage"]

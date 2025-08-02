@@ -14,11 +14,11 @@ from .base import DeltaLinkStorage
 
 class LocalFileDeltaLinkStorage(DeltaLinkStorage):
     """Stores delta links in a local JSON file per resource with metadata."""
-    
+
     def __init__(self, folder: str = "deltalinks"):
         """
         Initialize local file storage.
-        
+
         Args:
             folder: Directory to store delta link files (default: "deltalinks")
         """
@@ -27,7 +27,7 @@ class LocalFileDeltaLinkStorage(DeltaLinkStorage):
 
     def _get_resource_path(self, resource: str) -> str:
         """Convert resource name to safe file path."""
-        safe_name = resource.replace('/', '_').replace('\\', '_').replace(':', '_')
+        safe_name = resource.replace("/", "_").replace("\\", "_").replace(":", "_")
         if len(safe_name) > 200:
             safe_name = hashlib.md5(resource.encode()).hexdigest()
         return os.path.join(self.folder, f"{safe_name}.json")
@@ -55,21 +55,23 @@ class LocalFileDeltaLinkStorage(DeltaLinkStorage):
                     return {
                         "last_updated": data.get("last_updated"),
                         "metadata": data.get("metadata", {}),
-                        "resource": data.get("resource")
+                        "resource": data.get("resource"),
                     }
             except Exception as e:
                 logging.warning(f"Failed to read metadata for {resource}: {e}")
                 return None
         return None
 
-    async def set(self, resource: str, delta_link: str, metadata: Optional[Dict] = None):
+    async def set(
+        self, resource: str, delta_link: str, metadata: Optional[Dict] = None
+    ):
         """Set delta link and metadata for a resource."""
         path = self._get_resource_path(resource)
         data = {
             "delta_link": delta_link,
             "last_updated": datetime.now(timezone.utc).isoformat(),
             "resource": resource,
-            "metadata": metadata or {}
+            "metadata": metadata or {},
         }
         try:
             with open(path, "w", encoding="utf-8") as f:

@@ -13,9 +13,9 @@ from .storage import DeltaLinkStorage, LocalFileDeltaLinkStorage
 from .models import ChangeSummary, ResourceParams, PageMetadata, DeltaQueryMetadata
 
 
-
 # Global registry to track all client instances for cleanup
 _client_registry = weakref.WeakSet()
+
 
 async def _cleanup_all_clients():
     """Cleanup function for all clients - called during event loop shutdown."""
@@ -25,7 +25,9 @@ async def _cleanup_all_clients():
         except Exception as e:
             logging.warning(f"Error cleaning up client: {e}")
 
+
 # ---------- Enhanced AsyncDeltaQueryClient ----------
+
 
 class AsyncDeltaQueryClient:
     GRAPH_BASE = "https://graph.microsoft.com/v1.0"
@@ -36,7 +38,7 @@ class AsyncDeltaQueryClient:
         credential: Optional[DefaultAzureCredential] = None,
         delta_link_storage: Optional[DeltaLinkStorage] = None,
         timeout: Optional[aiohttp.ClientTimeout] = None,
-        max_concurrent_requests: int = 10
+        max_concurrent_requests: int = 10,
     ):
         self.credential = credential
         self.delta_link_storage = delta_link_storage or LocalFileDeltaLinkStorage()
@@ -46,64 +48,76 @@ class AsyncDeltaQueryClient:
         self._credential_created = False
         self._initialized = False
         self._closed = False
-        
+
         # Log the delta link storage source being used
         storage_type = type(self.delta_link_storage).__name__
         storage_info = f"Using {storage_type} for delta link storage"
-        
+
         # Add specific details for different storage types
         if storage_type == "AzureBlobDeltaLinkStorage":
             # Azure Blob Storage
-            container_name = getattr(self.delta_link_storage, 'container_name', 'deltalinks')
-            
+            container_name = getattr(
+                self.delta_link_storage, "container_name", "deltalinks"
+            )
+
             # Try to get account name from various sources
             account_name = "auto-detecting..."
-            account_url = getattr(self.delta_link_storage, '_account_url', None)
-            connection_string = getattr(self.delta_link_storage, '_connection_string', None)
-            
+            account_url = getattr(self.delta_link_storage, "_account_url", None)
+            connection_string = getattr(
+                self.delta_link_storage, "_connection_string", None
+            )
+
             if account_url:
                 # Extract from account URL
                 try:
-                    account_name = account_url.split('//')[1].split('.')[0]
+                    account_name = account_url.split("//")[1].split(".")[0]
                 except:
                     account_name = "from account URL"
             elif connection_string:
                 # Extract from connection string
                 try:
                     if "AccountName=" in connection_string:
-                        account_name = connection_string.split("AccountName=")[1].split(";")[0]
+                        account_name = connection_string.split("AccountName=")[1].split(
+                            ";"
+                        )[0]
                 except:
                     account_name = "from connection string"
-            
+
             storage_info += f" (Account: {account_name}, Container: {container_name})"
         elif storage_type == "LocalFileDeltaLinkStorage":
             # Local File Storage
-            deltalinks_dir = getattr(self.delta_link_storage, 'deltalinks_dir', 'deltalinks')
+            deltalinks_dir = getattr(
+                self.delta_link_storage, "deltalinks_dir", "deltalinks"
+            )
             storage_info += f" (Directory: {deltalinks_dir})"
-        
+
         logging.info(storage_info)
-        
+
         # Register this instance for cleanup
         _client_registry.add(self)
-        
+
         # Set up automatic cleanup when event loop shuts down
         try:
             loop = asyncio.get_running_loop()
             # Only add the cleanup callback once
-            if not hasattr(loop, '_delta_client_cleanup_added'):
+            if not hasattr(loop, "_delta_client_cleanup_added"):
                 # Check if signal handler method exists before using it
-                if hasattr(loop, 'add_signal_handler'):
+                if hasattr(loop, "add_signal_handler"):
                     try:
                         import signal
+
                         for sig in [signal.SIGTERM, signal.SIGINT]:
                             try:
-                                loop.add_signal_handler(sig, lambda: asyncio.create_task(_cleanup_all_clients()))
+                                loop.add_signal_handler(
+                                    sig,
+                                    lambda: asyncio.create_task(_cleanup_all_clients()),
+                                )
                             except (NotImplementedError, OSError):
                                 pass  # Signal handlers not supported on this platform
                     except ImportError:
                         pass
                 # Mark that we've attempted to set up cleanup (use setattr to avoid pylint warning)
-                setattr(loop, '_delta_client_cleanup_added', True)
+                setattr(loop, "_delta_client_cleanup_added", True)
         except RuntimeError:
             pass  # No running loop
 
@@ -111,33 +125,33 @@ class AsyncDeltaQueryClient:
         """Initialize the client - create session and credential if needed."""
         if self._initialized or self._closed:
             return
-            
+
         # Create session
         if self._session is None or self._session.closed:
             self._session = aiohttp.ClientSession(timeout=self.timeout)
             logging.debug("Created aiohttp session")
-        
+
         # Create credential if not provided
         if self.credential is None:
             self.credential = DefaultAzureCredential()
             self._credential_created = True
             logging.debug("Created DefaultAzureCredential")
-        
+
         self._initialized = True
 
     async def _internal_close(self):
         """Internal close method - can be called multiple times safely."""
         if self._closed:
             return
-            
+
         self._closed = True
-        
+
         # Close our session
         if self._session and not self._session.closed:
             await self._session.close()
             logging.debug("Closed aiohttp session")
         self._session = None
-        
+
         # Close credential if we created it
         if self.credential and self._credential_created:
             try:
@@ -145,7 +159,7 @@ class AsyncDeltaQueryClient:
                 logging.debug("Closed DefaultAzureCredential")
             except Exception as e:
                 logging.warning(f"Error closing credential: {e}")
-        
+
         self.credential = None
         self._credential_created = False
         self._initialized = False
@@ -153,72 +167,88 @@ class AsyncDeltaQueryClient:
     async def get_token(self) -> str:
         """
         Get access token for Microsoft Graph API.
-        
+
         The Azure Identity library handles all token caching, refresh, and retry logic automatically.
         """
         await self._initialize()
         if self.credential is None:
             raise ValueError("Credential is not initialized")
-        
+
         try:
             # Azure Identity library handles caching and refresh automatically
-            token = await self.credential.get_token("https://graph.microsoft.com/.default")
+            token = await self.credential.get_token(
+                "https://graph.microsoft.com/.default"
+            )
             return token.token
         except Exception as e:
             logging.error(f"Failed to get access token: {e}")
             raise
 
     async def _make_request(
-        self, 
-        url: str, 
-        headers: Optional[Dict[str, str]] = None
+        self, url: str, headers: Optional[Dict[str, str]] = None
     ) -> Tuple[int, str, Dict[str, Any]]:
         """Make HTTP request with rate limiting and error handling."""
         await self._initialize()
-        
+
         if self._session is None:
             raise ValueError("HTTP session is not initialized")
-        
+
         # Get fresh token for each request - Azure Identity handles caching/refresh
         token = await self.get_token()
         request_headers = headers or {}
         request_headers["Authorization"] = f"Bearer {token}"
         request_headers["Accept"] = "application/json"
-        
+
         async with self.semaphore:
             backoff, max_backoff = 1, 60
             max_retries = 5
-            
+
             for attempt in range(max_retries):
                 try:
                     logging.debug(f"Request attempt {attempt + 1}: {url}")
                     async with self._session.get(url, headers=request_headers) as resp:
                         text = await resp.text()
-                        
+
                         if resp.status == 401:
                             # Token might be expired - get a fresh one and retry once
                             if attempt == 0:  # Only retry once for auth issues
-                                logging.warning("Unauthorized (401) - getting fresh token and retrying")
+                                logging.warning(
+                                    "Unauthorized (401) - getting fresh token and retrying"
+                                )
                                 fresh_token = await self.get_token()
-                                request_headers["Authorization"] = f"Bearer {fresh_token}"
+                                request_headers["Authorization"] = (
+                                    f"Bearer {fresh_token}"
+                                )
                                 continue
                             else:
-                                logging.error("Unauthorized (401) after retry - authentication failed")
+                                logging.error(
+                                    "Unauthorized (401) after retry - authentication failed"
+                                )
                                 return resp.status, text, {}
                         elif resp.status == 429:
                             retry_after = resp.headers.get("Retry-After")
-                            wait = int(retry_after) if retry_after and retry_after.isdigit() else backoff
-                            logging.warning(f"Rate limited (429) - waiting {wait}s before retry")
+                            wait = (
+                                int(retry_after)
+                                if retry_after and retry_after.isdigit()
+                                else backoff
+                            )
+                            logging.warning(
+                                f"Rate limited (429) - waiting {wait}s before retry"
+                            )
                             await asyncio.sleep(wait)
                             backoff = min(backoff * 2, max_backoff)
                             continue
                         elif resp.status == 503:
-                            logging.warning(f"Service unavailable (503) - waiting {backoff}s before retry")
+                            logging.warning(
+                                f"Service unavailable (503) - waiting {backoff}s before retry"
+                            )
                             await asyncio.sleep(backoff)
                             backoff = min(backoff * 2, max_backoff)
                             continue
                         elif resp.status in (500, 502, 504):
-                            logging.warning(f"Server error ({resp.status}) - waiting {backoff}s before retry")
+                            logging.warning(
+                                f"Server error ({resp.status}) - waiting {backoff}s before retry"
+                            )
                             await asyncio.sleep(backoff)
                             backoff = min(backoff * 2, max_backoff)
                             continue
@@ -241,7 +271,7 @@ class AsyncDeltaQueryClient:
                         raise
                     await asyncio.sleep(backoff)
                     backoff = min(backoff * 2, max_backoff)
-            
+
             raise Exception(f"Max retries ({max_retries}) exceeded")
 
     async def delta_query_stream(
@@ -252,12 +282,12 @@ class AsyncDeltaQueryClient:
         delta_link: Optional[str] = None,
         deltatoken_latest: bool = False,
         top: Optional[int] = None,
-        fallback_to_full_sync: bool = True
+        fallback_to_full_sync: bool = True,
     ) -> AsyncGenerator[Tuple[List[Dict[str, Any]], PageMetadata], None]:
         """
         Stream delta query results page by page.
         Yields (objects, page_metadata) for each page.
-        
+
         Args:
             resource: The resource type (e.g., "users", "applications")
             select: List of properties to select
@@ -272,7 +302,7 @@ class AsyncDeltaQueryClient:
         total_new_or_updated = 0
         total_deleted = 0
         total_changed = 0
-        
+
         # Load existing delta link if not provided and get previous sync timestamp
         previous_sync_timestamp = None
         used_stored_deltalink = False
@@ -284,7 +314,9 @@ class AsyncDeltaQueryClient:
                 metadata = await self.delta_link_storage.get_metadata(resource)
                 if metadata and metadata.get("last_updated"):
                     try:
-                        previous_sync_timestamp = datetime.fromisoformat(metadata["last_updated"].replace('Z', '+00:00'))
+                        previous_sync_timestamp = datetime.fromisoformat(
+                            metadata["last_updated"].replace("Z", "+00:00")
+                        )
                     except Exception:
                         pass  # If parsing fails, continue without the timestamp
 
@@ -301,7 +333,7 @@ class AsyncDeltaQueryClient:
         elif delta_link:
             parsed = urllib.parse.urlparse(delta_link)
             qs = urllib.parse.parse_qs(parsed.query)
-            dt = qs.get('$deltatoken') or qs.get('deltatoken')
+            dt = qs.get("$deltatoken") or qs.get("deltatoken")
             if dt:
                 params["$deltatoken"] = dt[0]
         if top:
@@ -310,7 +342,11 @@ class AsyncDeltaQueryClient:
         first_call = True
 
         while True:
-            url = (f"{base_url}?{urllib.parse.urlencode(params)}") if first_call else next_link
+            url = (
+                (f"{base_url}?{urllib.parse.urlencode(params)}")
+                if first_call
+                else next_link
+            )
             first_call = False
 
             if not url:
@@ -318,7 +354,7 @@ class AsyncDeltaQueryClient:
 
             # Azure Identity handles token management automatically
             status, text, result = await self._make_request(url)
-            
+
             if status != 200:
                 # Check if this was a delta link failure and we should fallback
                 # Handle various delta link related errors that can occur:
@@ -326,12 +362,12 @@ class AsyncDeltaQueryClient:
                 # - HTTP 410: "Gone" (expired delta tokens)
                 # - HTTP 404: "Not Found" (malformed URLs or expired tokens)
                 delta_link_failure = (
-                    status in (400, 404, 410) and 
-                    fallback_to_full_sync and 
-                    delta_link and 
-                    page == 0
+                    status in (400, 404, 410)
+                    and fallback_to_full_sync
+                    and delta_link
+                    and page == 0
                 )
-                
+
                 if delta_link_failure:
                     # Try to extract error details for better logging
                     error_msg = "unknown error"
@@ -341,29 +377,39 @@ class AsyncDeltaQueryClient:
                             error_msg = error_data["error"].get("message", error_msg)
                     except:
                         pass
-                    
-                    logging.warning(f"Delta link failed with HTTP {status} ({error_msg}), falling back to full sync")
-                    
+
+                    logging.warning(
+                        f"Delta link failed with HTTP {status} ({error_msg}), falling back to full sync"
+                    )
+
                     # If this was a stored delta link that failed, clear it from storage
                     if used_stored_deltalink:
-                        logging.info(f"Clearing invalid stored delta link for {resource}")
+                        logging.info(
+                            f"Clearing invalid stored delta link for {resource}"
+                        )
                         await self.delta_link_storage.delete(resource)
-                        used_stored_deltalink = False  # Mark that we're no longer using stored delta link
-                    
+                        used_stored_deltalink = (
+                            False  # Mark that we're no longer using stored delta link
+                        )
+
                     # Clear the failed delta link and retry with full sync
                     delta_link = None
-                    params.pop('$deltatoken', None)  # Remove deltatoken if present
+                    params.pop("$deltatoken", None)  # Remove deltatoken if present
                     url = f"{base_url}?{urllib.parse.urlencode(params)}"
-                    
+
                     # Retry the request without delta link
                     status, text, result = await self._make_request(url)
                     if status != 200:
-                        logging.error(f"Full sync fallback also failed with HTTP {status}: {text}")
+                        logging.error(
+                            f"Full sync fallback also failed with HTTP {status}: {text}"
+                        )
                         break
                 else:
                     # For non-delta-link failures or when fallback is disabled
                     if not fallback_to_full_sync and delta_link and page == 0:
-                        logging.warning(f"Delta link failed with HTTP {status}, but fallback is disabled")
+                        logging.warning(
+                            f"Delta link failed with HTTP {status}, but fallback is disabled"
+                        )
                     else:
                         logging.error(f"Request failed with HTTP {status}: {text}")
                     break
@@ -377,7 +423,7 @@ class AsyncDeltaQueryClient:
             page_new_or_updated = 0
             page_deleted = 0
             page_changed = 0
-            
+
             for obj in objects:
                 removed_info = obj.get("@removed")
                 if removed_info:
@@ -409,7 +455,7 @@ class AsyncDeltaQueryClient:
                 total_new_or_updated=total_new_or_updated,
                 total_deleted=total_deleted,
                 total_changed=total_changed,
-                since_timestamp=previous_sync_timestamp
+                since_timestamp=previous_sync_timestamp,
             )
 
             # Save delta link whenever we get one, not just at the end
@@ -419,9 +465,9 @@ class AsyncDeltaQueryClient:
                     new_or_updated=total_new_or_updated,
                     deleted=total_deleted,
                     changed=total_changed,
-                    timestamp=previous_sync_timestamp  # Only set if this was an incremental sync
+                    timestamp=previous_sync_timestamp,  # Only set if this was an incremental sync
                 )
-                
+
                 metadata = {
                     "last_sync": datetime.now(timezone.utc).isoformat(),
                     "total_pages": page,
@@ -429,17 +475,15 @@ class AsyncDeltaQueryClient:
                         "new_or_updated": change_summary.new_or_updated,
                         "deleted": change_summary.deleted,
                         "changed": change_summary.changed,
-                        "total": change_summary.total
+                        "total": change_summary.total,
                     },
-                    "resource_params": {
-                        "select": select,
-                        "filter": filter,
-                        "top": top
-                    }
+                    "resource_params": {"select": select, "filter": filter, "top": top},
                 }
                 await self.delta_link_storage.set(resource, delta_link_resp, metadata)
-                logging.info(f"Saved delta link for {resource} (page {page}) - "
-                           f"{total_new_or_updated} new/updated, {total_deleted} deleted, {total_changed} changed")
+                logging.info(
+                    f"Saved delta link for {resource} (page {page}) - "
+                    f"{total_new_or_updated} new/updated, {total_deleted} deleted, {total_changed} changed"
+                )
 
             yield objects, page_meta
 
@@ -456,12 +500,12 @@ class AsyncDeltaQueryClient:
         deltatoken_latest: bool = False,
         top: Optional[int] = None,
         max_objects: Optional[int] = None,
-        fallback_to_full_sync: bool = True
+        fallback_to_full_sync: bool = True,
     ) -> Tuple[List[Dict[str, Any]], Optional[str], DeltaQueryMetadata]:
         """
         Execute delta query and return all results.
         Enhanced with better metadata and optional limits.
-        
+
         Args:
             resource: The resource type (e.g., "users", "applications")
             select: List of properties to select
@@ -476,15 +520,17 @@ class AsyncDeltaQueryClient:
         final_delta_link: Optional[str] = None
         total_pages = 0
         start_time = datetime.now(timezone.utc)
-        
+
         # Track change types
         total_new_or_updated = 0
         total_deleted = 0
         total_changed = 0
-        
+
         # Check if we used a stored delta link before starting
-        used_stored_deltalink = bool(not delta_link and await self.delta_link_storage.get(resource))
-        
+        used_stored_deltalink = bool(
+            not delta_link and await self.delta_link_storage.get(resource)
+        )
+
         # Get the timestamp from the previous sync to show "updates since"
         # Only set this if we're actually using a stored delta link (incremental sync)
         previous_sync_timestamp = None
@@ -492,29 +538,39 @@ class AsyncDeltaQueryClient:
             metadata = await self.delta_link_storage.get_metadata(resource)
             if metadata and metadata.get("last_updated"):
                 try:
-                    previous_sync_timestamp = datetime.fromisoformat(metadata["last_updated"].replace('Z', '+00:00'))
+                    previous_sync_timestamp = datetime.fromisoformat(
+                        metadata["last_updated"].replace("Z", "+00:00")
+                    )
                 except Exception:
                     pass  # If parsing fails, continue without the timestamp
 
         try:
             async for objects, page_meta in self.delta_query_stream(
-                resource, select, filter, delta_link, deltatoken_latest, top, fallback_to_full_sync
+                resource,
+                select,
+                filter,
+                delta_link,
+                deltatoken_latest,
+                top,
+                fallback_to_full_sync,
             ):
                 all_objects.extend(objects)
                 total_pages = page_meta.page
                 final_delta_link = page_meta.delta_link or final_delta_link
-                
+
                 # Update totals from page metadata
                 total_new_or_updated = page_meta.total_new_or_updated
                 total_deleted = page_meta.total_deleted
                 total_changed = page_meta.total_changed
-                
-                logging.info(f"Page {total_pages}: received {len(objects)} objects "
-                            f"(cumulative: {len(all_objects)}) - "
-                            f"{page_meta.page_new_or_updated} new/updated, "
-                            f"{page_meta.page_deleted} deleted, "
-                            f"{page_meta.page_changed} changed")
-                
+
+                logging.info(
+                    f"Page {total_pages}: received {len(objects)} objects "
+                    f"(cumulative: {len(all_objects)}) - "
+                    f"{page_meta.page_new_or_updated} new/updated, "
+                    f"{page_meta.page_deleted} deleted, "
+                    f"{page_meta.page_changed} changed"
+                )
+
                 # Respect max_objects limit
                 if max_objects and len(all_objects) >= max_objects:
                     all_objects = all_objects[:max_objects]
@@ -531,15 +587,15 @@ class AsyncDeltaQueryClient:
             new_or_updated=total_new_or_updated,
             deleted=total_deleted,
             changed=total_changed,
-            timestamp=previous_sync_timestamp  # Only set if this was an incremental sync
+            timestamp=previous_sync_timestamp,  # Only set if this was an incremental sync
         )
-        
+
         resource_params = ResourceParams(
             select=select,
             filter=filter,
             top=top,
             deltatoken_latest=deltatoken_latest,
-            max_objects=max_objects
+            max_objects=max_objects,
         )
 
         meta = DeltaQueryMetadata(
@@ -550,7 +606,7 @@ class AsyncDeltaQueryClient:
             end_time=end_time.isoformat(),
             used_stored_deltalink=used_stored_deltalink,
             change_summary=change_summary,
-            resource_params=resource_params
+            resource_params=resource_params,
         )
 
         return all_objects, final_delta_link, meta
@@ -568,31 +624,36 @@ class AsyncDeltaQueryClient:
                 loop.create_task(self._internal_close())
             except RuntimeError:
                 # No running loop, can't clean up async resources
-                logging.warning("AsyncDeltaQueryClient destroyed without proper cleanup (no running event loop)")
+                logging.warning(
+                    "AsyncDeltaQueryClient destroyed without proper cleanup (no running event loop)"
+                )
+
 
 # ---------- Usage Example ----------
 
+
 async def example_usage():
     """Example of simplified usage - no context manager, no manual closing needed."""
-    
+
     # Simple instantiation - everything handled internally
     client = AsyncDeltaQueryClient()
-    
+
     # Just use it - sessions are created and cleaned up automatically
     users, delta_link, meta = await client.delta_query_all(
-        resource="users",
-        select=["id", "displayName", "mail"],
-        top=100
+        resource="users", select=["id", "displayName", "mail"], top=100
     )
-    
+
     print(f"Retrieved {len(users)} users in {meta.duration_seconds:.2f}s")
-    print(f"Change summary: {meta.change_summary.new_or_updated} new/updated, "
-          f"{meta.change_summary.deleted} deleted, {meta.change_summary.changed} changed")
+    print(
+        f"Change summary: {meta.change_summary.new_or_updated} new/updated, "
+        f"{meta.change_summary.deleted} deleted, {meta.change_summary.changed} changed"
+    )
     # No need to close anything - handled automatically
+
 
 if __name__ == "__main__":
     # Configure logging
     logging.basicConfig(level=logging.INFO)
-    
+
     # Simple usage
     asyncio.run(example_usage())
