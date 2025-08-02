@@ -1,22 +1,12 @@
-"""
-Microsoft Graph Delta Query Client using the official Microsoft Graph SDK.
-
-This module provides an enhanced client for performing delta queries against Microsoft Graph
-using the official Python SDK, offering improved reliability, type safety, and maintainability.
-"""
-
+import aiohttp
 import logging
 import json
 import urllib.parse
 import asyncio
 import weakref
-from typing import Optional, Any, Dict, List, Tuple, AsyncGenerator, Union
+from typing import Optional, Any, Dict, List, Tuple, AsyncGenerator
 from azure.identity.aio import DefaultAzureCredential
 from datetime import datetime, timezone
-
-# Microsoft Graph SDK imports
-from msgraph.graph_service_client import GraphServiceClient
-
 from .storage import DeltaLinkStorage, LocalFileDeltaLinkStorage
 from .models import ChangeSummary, ResourceParams, PageMetadata, DeltaQueryMetadata
 
@@ -34,41 +24,25 @@ async def _cleanup_all_clients() -> None:
             logging.warning(f"Error cleaning up client: {e}")
 
 
-class AsyncDeltaQueryClient:
-    """
-    Enhanced AsyncDeltaQueryClient using Microsoft Graph SDK for Python.
-    
-    This client provides delta query capabilities with automatic authentication,
-    rate limiting, retry logic, and comprehensive error handling through the
-    official Microsoft Graph SDK.
-    """
+# ---------- Enhanced AsyncDeltaQueryClient ----------
 
-    SUPPORTED_RESOURCES = {
-        "users": "users",
-        "applications": "applications", 
-        "groups": "groups",
-        "serviceprincipals": "servicePrincipals",
-        "servicePrincipals": "servicePrincipals"
-    }
+
+class AsyncDeltaQueryClient:
+    GRAPH_BASE = "https://graph.microsoft.com/v1.0"
+    DEFAULT_TIMEOUT = aiohttp.ClientTimeout(total=300, connect=30)
 
     def __init__(
         self,
         credential: Optional[DefaultAzureCredential] = None,
         delta_link_storage: Optional[DeltaLinkStorage] = None,
-        scopes: Optional[List[str]] = None,
+        timeout: Optional[aiohttp.ClientTimeout] = None,
+        max_concurrent_requests: int = 10,
     ):
-        """
-        Initialize the Microsoft Graph SDK-based delta query client.
-        
-        Args:
-            credential: Azure credential for authentication
-            delta_link_storage: Storage backend for delta links
-            scopes: OAuth scopes for Graph API access
-        """
         self.credential = credential
         self.delta_link_storage = delta_link_storage or LocalFileDeltaLinkStorage()
-        self.scopes = scopes or ["https://graph.microsoft.com/.default"]
-        self._graph_client: Optional[GraphServiceClient] = None
+        self.timeout = timeout or self.DEFAULT_TIMEOUT
+        self.semaphore = asyncio.Semaphore(max_concurrent_requests)
+        self._session: Optional[aiohttp.ClientSession] = None
         self._credential_created = False
         self._initialized = False
         self._closed = False
@@ -79,9 +53,12 @@ class AsyncDeltaQueryClient:
 
         # Add specific details for different storage types
         if storage_type == "AzureBlobDeltaLinkStorage":
+            # Azure Blob Storage
             container_name = getattr(
                 self.delta_link_storage, "container_name", "deltalinks"
             )
+
+            # Try to get account name from various sources
             account_name = "auto-detecting..."
             account_url = getattr(self.delta_link_storage, "_account_url", None)
             connection_string = getattr(
@@ -89,11 +66,13 @@ class AsyncDeltaQueryClient:
             )
 
             if account_url:
+                # Extract from account URL
                 try:
                     account_name = account_url.split("//")[1].split(".")[0]
                 except (IndexError, AttributeError):
                     account_name = "from account URL"
             elif connection_string:
+                # Extract from connection string
                 try:
                     if "AccountName=" in connection_string:
                         account_name = connection_string.split("AccountName=")[1].split(
@@ -104,6 +83,7 @@ class AsyncDeltaQueryClient:
 
             storage_info += f" (Account: {account_name}, Container: {container_name})"
         elif storage_type == "LocalFileDeltaLinkStorage":
+            # Local File Storage
             deltalinks_dir = getattr(
                 self.delta_link_storage, "deltalinks_dir", "deltalinks"
             )
@@ -117,10 +97,13 @@ class AsyncDeltaQueryClient:
         # Set up automatic cleanup when event loop shuts down
         try:
             loop = asyncio.get_running_loop()
+            # Only add the cleanup callback once
             if not hasattr(loop, "_delta_client_cleanup_added"):
+                # Check if signal handler method exists before using it
                 if hasattr(loop, "add_signal_handler"):
                     try:
                         import signal
+
                         for sig in [signal.SIGTERM, signal.SIGINT]:
                             try:
                                 loop.add_signal_handler(
@@ -128,22 +111,23 @@ class AsyncDeltaQueryClient:
                                     lambda: asyncio.create_task(_cleanup_all_clients()),
                                 )
                             except (NotImplementedError, OSError):
-                                pass
+                                pass  # Signal handlers not supported on this platform
                     except ImportError:
                         pass
+                # Mark that we've attempted to set up cleanup (use setattr to avoid pylint warning)
                 setattr(loop, "_delta_client_cleanup_added", True)
         except RuntimeError:
-            pass
+            pass  # No running loop
 
     async def _initialize(self) -> None:
-        """Initialize the Graph client and authentication."""
-        if self._initialized and not self._closed:
+        """Initialize the client - create session and credential if needed."""
+        if self._initialized or self._closed:
             return
-        
-        # Reset state if we were previously closed
-        if self._closed:
-            self._closed = False
-            self._initialized = False
+
+        # Create session
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession(timeout=self.timeout)
+            logging.debug("Created aiohttp session")
 
         # Create credential if not provided
         if self.credential is None:
@@ -151,13 +135,6 @@ class AsyncDeltaQueryClient:
             self._credential_created = True
             logging.debug("Created DefaultAzureCredential")
 
-        # Create Graph client with the credential
-        self._graph_client = GraphServiceClient(
-            credentials=self.credential,
-            scopes=self.scopes
-        )
-        
-        logging.debug("Created GraphServiceClient with Microsoft Graph SDK")
         self._initialized = True
 
     async def _internal_close(self) -> None:
@@ -167,11 +144,11 @@ class AsyncDeltaQueryClient:
 
         self._closed = True
 
-        # Close Graph client if it exists
-        if self._graph_client:
-            # The SDK handles its own cleanup
-            self._graph_client = None
-            logging.debug("Closed GraphServiceClient")
+        # Close our session
+        if self._session and not self._session.closed:
+            await self._session.close()
+            logging.debug("Closed aiohttp session")
+        self._session = None
 
         # Close credential if we created it
         if self.credential and self._credential_created:
@@ -185,175 +162,115 @@ class AsyncDeltaQueryClient:
         self._credential_created = False
         self._initialized = False
 
-    def _get_delta_request_builder(self, resource: str):
-        """Get the appropriate delta request builder for the resource type."""
-        if not self._graph_client:
-            raise ValueError("Graph client not initialized")
-            
-        resource_lower = resource.lower()
-        
-        if resource_lower == "users":
-            return self._graph_client.users.delta
-        elif resource_lower == "applications":
-            return self._graph_client.applications.delta
-        elif resource_lower == "groups":
-            return self._graph_client.groups.delta
-        elif resource_lower in ("serviceprincipals", "servicePrincipals"):
-            return self._graph_client.service_principals.delta
-        else:
-            raise ValueError(
-                f"Unsupported resource type: {resource}. "
-                f"Supported types: {list(self.SUPPORTED_RESOURCES.keys())}"
-            )
-
-    def _build_query_parameters(
-        self,
-        select: Optional[List[str]] = None,
-        filter: Optional[str] = None,
-        top: Optional[int] = None,
-        deltatoken: Optional[str] = None,
-        deltatoken_latest: bool = False,
-    ) -> Dict[str, Any]:
-        """Build query parameters for the delta request."""
-        params = {}
-        
-        if select:
-            params["select"] = select
-        if filter:
-            params["filter"] = filter
-        if top:
-            params["top"] = top
-        if deltatoken_latest:
-            params["deltatoken"] = "latest"
-        elif deltatoken:
-            params["deltatoken"] = deltatoken
-            
-        return params
-
-    def _convert_sdk_object_to_dict(self, obj: Any) -> Dict[str, Any]:
-        """Convert SDK object to dictionary for compatibility."""
-        if obj is None:
-            return {}
-            
-        result = {}
-        
-        # Handle SDK objects with additional_data
-        if hasattr(obj, 'additional_data') and obj.additional_data:
-            result.update(obj.additional_data)
-        
-        # Add regular properties
-        if hasattr(obj, '__dict__'):
-            for attr_name, attr_value in obj.__dict__.items():
-                if not attr_name.startswith('_') and attr_value is not None:
-                    # Skip some internal SDK attributes
-                    if attr_name in ('backing_store', 'additional_data'):
-                        continue
-                    result[attr_name] = attr_value
-        
-        # Fallback: try to convert if it has items method (dict-like)
-        if not result and hasattr(obj, 'items'):
-            try:
-                result = dict(obj)
-            except (TypeError, ValueError):
-                pass
-        
-        # Last resort: convert to string representation
-        if not result:
-            result = {"value": str(obj)}
-            
-        return result
-
-    async def _extract_delta_token_from_link(self, delta_link: Optional[str]) -> Optional[str]:
-        """Extract delta token from a delta link URL."""
-        if not delta_link:
-            return None
-            
-        try:
-            parsed = urllib.parse.urlparse(delta_link)
-            qs = urllib.parse.parse_qs(parsed.query)
-            dt = qs.get("$deltatoken") or qs.get("deltatoken")
-            return dt[0] if dt else None
-        except Exception as e:
-            logging.warning(f"Failed to extract delta token from link: {e}")
-            return None
-
-    async def _execute_delta_request(
-        self,
-        request_builder,
-        query_params: Dict[str, Any],
-        fallback_to_full_sync: bool = True,
-        used_stored_deltalink: bool = False,
-        resource: str = "",
-    ) -> Tuple[Any, bool]:
+    async def get_token(self) -> str:
         """
-        Execute a delta request with proper error handling and fallback logic.
-        
-        Returns:
-            Tuple of (response, fallback_occurred)
+        Get access token for Microsoft Graph API.
+
+        The Azure Identity library handles all token caching, refresh, and retry logic automatically.
         """
-        # Get the classes once for reuse
-        QueryParamsClass = request_builder.DeltaRequestBuilderGetQueryParameters
-        RequestConfigClass = request_builder.DeltaRequestBuilderGetRequestConfiguration
-        
+        await self._initialize()
+        if self.credential is None:
+            raise ValueError("Credential is not initialized")
+
         try:
-            # Create query parameters using the SDK's classes
-            query_params_obj = QueryParamsClass()
-            
-            # Set query parameters
-            for key, value in query_params.items():
-                if hasattr(query_params_obj, key) and value is not None:
-                    setattr(query_params_obj, key, value)
-            
-            # Create request configuration
-            request_config = RequestConfigClass(query_parameters=query_params_obj)
-            
-            # Execute the request
-            response = await request_builder.get(request_config)
-            return response, False
-            
-        except Exception as e:
-            error_msg = str(e).lower()
-            
-            # Check if this is a delta token related error
-            is_delta_error = any(
-                phrase in error_msg for phrase in [
-                    "token", "expired", "invalid", "bad", "malformed", "gone"
-                ]
+            # Azure Identity library handles caching and refresh automatically
+            token = await self.credential.get_token(
+                "https://graph.microsoft.com/.default"
             )
-            
-            # Try fallback if it's a delta error and we have fallback enabled
-            if (is_delta_error and fallback_to_full_sync and 
-                "deltatoken" in query_params and used_stored_deltalink):
-                
-                logging.warning(
-                    f"Delta token failed ({e}), falling back to full sync for {resource}"
-                )
-                
-                # Clear stored delta link if it was invalid
-                if used_stored_deltalink:
-                    logging.info(f"Clearing invalid stored delta link for {resource}")
-                    await self.delta_link_storage.delete(resource)
-                
+            return token.token
+        except Exception as e:
+            logging.error(f"Failed to get access token: {e}")
+            raise
+
+    async def _make_request(
+        self, url: str, headers: Optional[Dict[str, str]] = None
+    ) -> Tuple[int, str, Dict[str, Any]]:
+        """Make HTTP request with rate limiting and error handling."""
+        await self._initialize()
+
+        if self._session is None:
+            raise ValueError("HTTP session is not initialized")
+
+        # Get fresh token for each request - Azure Identity handles caching/refresh
+        token = await self.get_token()
+        request_headers = headers or {}
+        request_headers["Authorization"] = f"Bearer {token}"
+        request_headers["Accept"] = "application/json"
+
+        async with self.semaphore:
+            backoff, max_backoff = 1, 60
+            max_retries = 5
+
+            for attempt in range(max_retries):
                 try:
-                    # Retry without delta token (full sync)
-                    fallback_params = query_params.copy()
-                    fallback_params.pop("deltatoken", None)
-                    
-                    fallback_query_params_obj = QueryParamsClass()
-                    for key, value in fallback_params.items():
-                        if hasattr(fallback_query_params_obj, key) and value is not None:
-                            setattr(fallback_query_params_obj, key, value)
-                    
-                    fallback_config = RequestConfigClass(query_parameters=fallback_query_params_obj)
-                    response = await request_builder.get(fallback_config)
-                    return response, True
-                    
-                except Exception as fallback_error:
-                    logging.error(f"Fallback to full sync also failed: {fallback_error}")
-                    raise fallback_error
-            else:
-                # Re-raise the original error if no fallback or fallback not applicable
-                raise e
+                    logging.debug(f"Request attempt {attempt + 1}: {url}")
+                    async with self._session.get(url, headers=request_headers) as resp:
+                        text = await resp.text()
+
+                        if resp.status == 401:
+                            # Token might be expired - get a fresh one and retry once
+                            if attempt == 0:  # Only retry once for auth issues
+                                logging.warning(
+                                    "Unauthorized (401) - getting fresh token and retrying"
+                                )
+                                fresh_token = await self.get_token()
+                                request_headers["Authorization"] = (
+                                    f"Bearer {fresh_token}"
+                                )
+                                continue
+                            else:
+                                logging.error(
+                                    "Unauthorized (401) after retry - authentication failed"
+                                )
+                                return resp.status, text, {}
+                        elif resp.status == 429:
+                            retry_after = resp.headers.get("Retry-After")
+                            wait = (
+                                int(retry_after)
+                                if retry_after and retry_after.isdigit()
+                                else backoff
+                            )
+                            logging.warning(
+                                f"Rate limited (429) - waiting {wait}s before retry"
+                            )
+                            await asyncio.sleep(wait)
+                            backoff = min(backoff * 2, max_backoff)
+                            continue
+                        elif resp.status == 503:
+                            logging.warning(
+                                f"Service unavailable (503) - waiting {backoff}s before retry"
+                            )
+                            await asyncio.sleep(backoff)
+                            backoff = min(backoff * 2, max_backoff)
+                            continue
+                        elif resp.status in (500, 502, 504):
+                            logging.warning(
+                                f"Server error ({resp.status}) - waiting {backoff}s before retry"
+                            )
+                            await asyncio.sleep(backoff)
+                            backoff = min(backoff * 2, max_backoff)
+                            continue
+                        elif resp.status != 200:
+                            logging.error(f"HTTP {resp.status}: {text}")
+                            return resp.status, text, {}
+
+                        result = await resp.json()
+                        return resp.status, text, result
+
+                except asyncio.TimeoutError:
+                    logging.warning(f"Request timeout - attempt {attempt + 1}")
+                    if attempt == max_retries - 1:
+                        raise
+                    await asyncio.sleep(backoff)
+                    backoff = min(backoff * 2, max_backoff)
+                except Exception as e:
+                    logging.error(f"Request failed: {e}")
+                    if attempt == max_retries - 1:
+                        raise
+                    await asyncio.sleep(backoff)
+                    backoff = min(backoff * 2, max_backoff)
+
+            raise Exception(f"Max retries ({max_retries}) exceeded")
 
     async def delta_query_stream(
         self,
@@ -366,8 +283,9 @@ class AsyncDeltaQueryClient:
         fallback_to_full_sync: bool = True,
     ) -> AsyncGenerator[Tuple[List[Dict[str, Any]], PageMetadata], None]:
         """
-        Stream delta query results page by page using Microsoft Graph SDK.
-        
+        Stream delta query results page by page.
+        Yields (objects, page_metadata) for each page.
+
         Args:
             resource: The resource type (e.g., "users", "applications")
             select: List of properties to select
@@ -375,20 +293,10 @@ class AsyncDeltaQueryClient:
             delta_link: Explicit delta link to use (overrides stored one)
             deltatoken_latest: Use latest deltatoken for initial sync
             top: Maximum items per page
-            fallback_to_full_sync: If True, retry with full sync when delta link fails
-            
-        Yields:
-            Tuple of (objects_list, page_metadata) for each page
+            fallback_to_full_sync: If True, retry with full sync when delta link fails (default: True)
         """
-        await self._initialize()
-        
-        if resource.lower() not in [k.lower() for k in self.SUPPORTED_RESOURCES.keys()]:
-            raise ValueError(
-                f"Unsupported resource type: {resource}. "
-                f"Supported types: {list(self.SUPPORTED_RESOURCES.keys())}"
-            )
-
         page = 0
+        next_link: Optional[str] = None
         total_new_or_updated = 0
         total_deleted = 0
         total_changed = 0
@@ -396,15 +304,11 @@ class AsyncDeltaQueryClient:
         # Load existing delta link if not provided and get previous sync timestamp
         previous_sync_timestamp = None
         used_stored_deltalink = False
-        deltatoken = None
-        
-        if not delta_link and not deltatoken_latest:
-            stored_delta_link = await self.delta_link_storage.get(resource)
-            if stored_delta_link:
-                used_stored_deltalink = True
-                deltatoken = await self._extract_delta_token_from_link(stored_delta_link)
-                
-                # Get the timestamp from the previous sync
+        if not delta_link:
+            delta_link = await self.delta_link_storage.get(resource)
+            used_stored_deltalink = bool(delta_link)
+            # Get the timestamp from the previous sync only if we found a stored delta link
+            if used_stored_deltalink:
                 metadata = await self.delta_link_storage.get_metadata(resource)
                 if metadata and metadata.get("last_updated"):
                     try:
@@ -412,47 +316,106 @@ class AsyncDeltaQueryClient:
                             metadata["last_updated"].replace("Z", "+00:00")
                         )
                     except Exception:
-                        pass
+                        pass  # If parsing fails, continue without the timestamp
+
+        # Build initial URL
+        base_url = f"{self.GRAPH_BASE}/{resource}/delta"
+        params: Dict[str, str] = {}
+
+        if select:
+            params["$select"] = ",".join(select)
+        if filter:
+            params["$filter"] = filter
+        if deltatoken_latest:
+            params["$deltatoken"] = "latest"
         elif delta_link:
-            deltatoken = await self._extract_delta_token_from_link(delta_link)
+            parsed = urllib.parse.urlparse(delta_link)
+            qs = urllib.parse.parse_qs(parsed.query)
+            dt = qs.get("$deltatoken") or qs.get("deltatoken")
+            if dt:
+                params["$deltatoken"] = dt[0]
+        if top:
+            params["$top"] = str(top)
 
-        # Get the appropriate request builder
-        request_builder = self._get_delta_request_builder(resource)
-        
-        # Build initial query parameters
-        query_params = self._build_query_parameters(
-            select=select,
-            filter=filter, 
-            top=top,
-            deltatoken=deltatoken,
-            deltatoken_latest=deltatoken_latest
-        )
+        first_call = True
 
-        # Execute initial request
-        try:
-            response, fallback_occurred = await self._execute_delta_request(
-                request_builder,
-                query_params,
-                fallback_to_full_sync,
-                used_stored_deltalink,
-                resource
+        while True:
+            url = (
+                (f"{base_url}?{urllib.parse.urlencode(params)}")
+                if first_call
+                else next_link
             )
-            
-            if fallback_occurred:
-                used_stored_deltalink = False  # No longer using stored delta link after fallback
-                
-        except Exception as e:
-            logging.error(f"Failed to execute delta query for {resource}: {e}")
-            raise
+            first_call = False
 
-        # Process pages
-        while response:
+            if not url:
+                break
+
+            # Azure Identity handles token management automatically
+            status, text, result = await self._make_request(url)
+
+            if status != 200:
+                # Check if this was a delta link failure and we should fallback
+                # Handle various delta link related errors that can occur:
+                # - HTTP 400: "Badly formed token" (invalid/malformed/expired delta tokens)
+                # - HTTP 410: "Gone" (expired delta tokens)
+                # - HTTP 404: "Not Found" (malformed URLs or expired tokens)
+                delta_link_failure = (
+                    status in (400, 404, 410)
+                    and fallback_to_full_sync
+                    and delta_link
+                    and page == 0
+                )
+
+                if delta_link_failure:
+                    # Try to extract error details for better logging
+                    error_msg = "unknown error"
+                    try:
+                        error_data = json.loads(text) if text else {}
+                        if "error" in error_data:
+                            error_msg = error_data["error"].get("message", error_msg)
+                    except (ValueError, KeyError, TypeError):
+                        pass
+
+                    logging.warning(
+                        f"Delta link failed with HTTP {status} ({error_msg}), falling back to full sync"
+                    )
+
+                    # If this was a stored delta link that failed, clear it from storage
+                    if used_stored_deltalink:
+                        logging.info(
+                            f"Clearing invalid stored delta link for {resource}"
+                        )
+                        await self.delta_link_storage.delete(resource)
+                        used_stored_deltalink = (
+                            False  # Mark that we're no longer using stored delta link
+                        )
+
+                    # Clear the failed delta link and retry with full sync
+                    delta_link = None
+                    params.pop("$deltatoken", None)  # Remove deltatoken if present
+                    url = f"{base_url}?{urllib.parse.urlencode(params)}"
+
+                    # Retry the request without delta link
+                    status, text, result = await self._make_request(url)
+                    if status != 200:
+                        logging.error(
+                            f"Full sync fallback also failed with HTTP {status}: {text}"
+                        )
+                        break
+                else:
+                    # For non-delta-link failures or when fallback is disabled
+                    if not fallback_to_full_sync and delta_link and page == 0:
+                        logging.warning(
+                            f"Delta link failed with HTTP {status}, but fallback is disabled"
+                        )
+                    else:
+                        logging.error(f"Request failed with HTTP {status}: {text}")
+                    break
+
+            objects = result.get("value", [])
             page += 1
-            
-            # Extract objects from response
-            objects = []
-            if hasattr(response, 'value') and response.value:
-                objects = [self._convert_sdk_object_to_dict(obj) for obj in response.value]
+            next_link = result.get("@odata.nextLink")
+            delta_link_resp = result.get("@odata.deltaLink")
 
             # Analyze change types in this page
             page_new_or_updated = 0
@@ -470,26 +433,20 @@ class AsyncDeltaQueryClient:
                         page_changed += 1
                         total_changed += 1
                     else:
+                        # Unknown removal reason, count as changed
                         page_changed += 1
                         total_changed += 1
                 else:
+                    # No @removed property means new or updated object
                     page_new_or_updated += 1
                     total_new_or_updated += 1
-
-            # Get delta link from response
-            delta_link_resp = None
-            if hasattr(response, 'odata_delta_link'):
-                delta_link_resp = response.odata_delta_link
-                
-            # Check for next page
-            has_next_page = hasattr(response, 'odata_next_link') and response.odata_next_link
 
             page_meta = PageMetadata(
                 page=page,
                 object_count=len(objects),
-                has_next_page=has_next_page,
+                has_next_page=bool(next_link),
                 delta_link=delta_link_resp,
-                raw_response_size=len(str(response)),  # Approximate size
+                raw_response_size=len(text),
                 page_new_or_updated=page_new_or_updated,
                 page_deleted=page_deleted,
                 page_changed=page_changed,
@@ -499,13 +456,14 @@ class AsyncDeltaQueryClient:
                 since_timestamp=previous_sync_timestamp,
             )
 
-            # Save delta link whenever we get one
+            # Save delta link whenever we get one, not just at the end
+            # This ensures it's saved even if the user breaks early from the loop
             if delta_link_resp:
                 change_summary = ChangeSummary(
                     new_or_updated=total_new_or_updated,
                     deleted=total_deleted,
                     changed=total_changed,
-                    timestamp=previous_sync_timestamp,
+                    timestamp=previous_sync_timestamp,  # Only set if this was an incremental sync
                 )
 
                 metadata = {
@@ -528,14 +486,9 @@ class AsyncDeltaQueryClient:
 
             yield objects, page_meta
 
-            # Check if we should continue to next page
-            if not has_next_page:
+            if not next_link:
+                # We've reached the end naturally
                 break
-                
-            # For next page, we need to handle pagination differently
-            # The Graph SDK should handle this automatically, but we need to check
-            # For now, break since pagination handling needs more investigation
-            break
 
     async def delta_query_all(
         self,
@@ -549,8 +502,9 @@ class AsyncDeltaQueryClient:
         fallback_to_full_sync: bool = True,
     ) -> Tuple[List[Dict[str, Any]], Optional[str], DeltaQueryMetadata]:
         """
-        Execute delta query and return all results using Microsoft Graph SDK.
-        
+        Execute delta query and return all results.
+        Enhanced with better metadata and optional limits.
+
         Args:
             resource: The resource type (e.g., "users", "applications")
             select: List of properties to select
@@ -559,10 +513,7 @@ class AsyncDeltaQueryClient:
             deltatoken_latest: Use latest deltatoken for initial sync
             top: Maximum items per page
             max_objects: Maximum total objects to return
-            fallback_to_full_sync: If True, retry with full sync when delta link fails
-            
-        Returns:
-            Tuple of (all_objects, final_delta_link, metadata)
+            fallback_to_full_sync: If True, retry with full sync when delta link fails (default: True)
         """
         all_objects: List[Dict[str, Any]] = []
         final_delta_link: Optional[str] = None
@@ -575,13 +526,12 @@ class AsyncDeltaQueryClient:
         total_changed = 0
 
         # Check if we used a stored delta link before starting
-        used_stored_deltalink = (
-            not delta_link and 
-            not deltatoken_latest and 
-            bool(await self.delta_link_storage.get(resource))
+        used_stored_deltalink = bool(
+            not delta_link and await self.delta_link_storage.get(resource)
         )
 
-        # Get the timestamp from the previous sync
+        # Get the timestamp from the previous sync to show "updates since"
+        # Only set this if we're actually using a stored delta link (incremental sync)
         previous_sync_timestamp = None
         if used_stored_deltalink:
             metadata = await self.delta_link_storage.get_metadata(resource)
@@ -591,7 +541,7 @@ class AsyncDeltaQueryClient:
                         metadata["last_updated"].replace("Z", "+00:00")
                     )
                 except Exception:
-                    pass
+                    pass  # If parsing fails, continue without the timestamp
 
         try:
             async for objects, page_meta in self.delta_query_stream(
@@ -625,7 +575,6 @@ class AsyncDeltaQueryClient:
                     all_objects = all_objects[:max_objects]
                     logging.info(f"Reached max_objects limit ({max_objects})")
                     break
-                    
         finally:
             # Auto-cleanup after each major operation
             await self._internal_close()
@@ -637,7 +586,7 @@ class AsyncDeltaQueryClient:
             new_or_updated=total_new_or_updated,
             deleted=total_deleted,
             changed=total_changed,
-            timestamp=previous_sync_timestamp,
+            timestamp=previous_sync_timestamp,  # Only set if this was an incremental sync
         )
 
         resource_params = ResourceParams(
@@ -673,6 +622,7 @@ class AsyncDeltaQueryClient:
                 loop = asyncio.get_running_loop()
                 loop.create_task(self._internal_close())
             except RuntimeError:
+                # No running loop, can't clean up async resources
                 logging.warning(
                     "AsyncDeltaQueryClient destroyed without proper cleanup "
                     "(no running event loop)"
@@ -683,16 +633,14 @@ class AsyncDeltaQueryClient:
 
 
 async def example_usage() -> None:
-    """Example of simplified usage with Microsoft Graph SDK."""
+    """Example of simplified usage - no context manager, no manual closing needed."""
 
-    # Simple instantiation with Microsoft Graph SDK
+    # Simple instantiation - everything handled internally
     client = AsyncDeltaQueryClient()
 
-    # Just use it - authentication and sessions handled by SDK
+    # Just use it - sessions are created and cleaned up automatically
     users, delta_link, meta = await client.delta_query_all(
-        resource="users", 
-        select=["id", "displayName", "mail"], 
-        top=100
+        resource="users", select=["id", "displayName", "mail"], top=100
     )
 
     print(f"Retrieved {len(users)} users in {meta.duration_seconds:.2f}s")
@@ -700,12 +648,12 @@ async def example_usage() -> None:
         f"Change summary: {meta.change_summary.new_or_updated} new/updated, "
         f"{meta.change_summary.deleted} deleted, {meta.change_summary.changed} changed"
     )
-    # SDK handles cleanup automatically
+    # No need to close anything - handled automatically
 
 
 if __name__ == "__main__":
     # Configure logging
     logging.basicConfig(level=logging.INFO)
 
-    # Simple usage with Microsoft Graph SDK
+    # Simple usage
     asyncio.run(example_usage())

@@ -15,7 +15,7 @@ from azure.identity.aio import DefaultAzureCredential
 from datetime import datetime, timezone
 
 # Microsoft Graph SDK imports
-from msgraph.graph_service_client import GraphServiceClient
+from msgraph import GraphServiceClient
 
 from .storage import DeltaLinkStorage, LocalFileDeltaLinkStorage
 from .models import ChangeSummary, ResourceParams, PageMetadata, DeltaQueryMetadata
@@ -137,13 +137,8 @@ class AsyncDeltaQueryClient:
 
     async def _initialize(self) -> None:
         """Initialize the Graph client and authentication."""
-        if self._initialized and not self._closed:
+        if self._initialized or self._closed:
             return
-        
-        # Reset state if we were previously closed
-        if self._closed:
-            self._closed = False
-            self._initialized = False
 
         # Create credential if not provided
         if self.credential is None:

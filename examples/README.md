@@ -31,6 +31,39 @@ Each example demonstrates a specific real-world usage pattern. Examples are desi
 python examples/simple_local_sync.py
 ```
 
+### `simple_applications_sync.py`
+
+**Purpose**: Sync application registrations from Microsoft Graph  
+**Best for**: Security auditing, application inventory  
+**What it does**: Retrieves all application registrations with their key properties  
+**Storage**: Uses local `deltalinks/` folder
+
+```bash
+python examples/simple_applications_sync.py
+```
+
+### `simple_service_principals_sync.py`
+
+**Purpose**: Sync service principals (app instances) from Microsoft Graph  
+**Best for**: Security monitoring, compliance reporting  
+**What it does**: Retrieves all service principals with their configuration  
+**Storage**: Uses local `deltalinks/` folder
+
+```bash
+python examples/simple_service_principals_sync.py
+```
+
+### `multi_resource_sync.py`
+
+**Purpose**: Comprehensive sync of multiple resource types  
+**Best for**: Complete tenant inventory, security auditing  
+**What it does**: Syncs users, applications, service principals, and groups (if permitted)  
+**Storage**: Uses local `deltalinks/` folder
+
+```bash
+python examples/multi_resource_sync.py
+```
+
 ### `simple_azure_sync.py`
 
 **Purpose**: Get user data with Azure Blob Storage  
