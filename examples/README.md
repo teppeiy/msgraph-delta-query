@@ -20,7 +20,7 @@ Each example demonstrates a specific real-world usage pattern. Examples are desi
 
 ## Available Examples
 
-### `simple_local_sync.py`
+### `users_localfile_sync.py`
 
 **Purpose**: Get user data with local file storage  
 **Best for**: Development, testing, simple scripts  
@@ -28,10 +28,10 @@ Each example demonstrates a specific real-world usage pattern. Examples are desi
 **Storage**: Uses local `deltalinks/` folder
 
 ```bash
-python examples/simple_local_sync.py
+python examples/users_localfile_sync.py
 ```
 
-### `simple_applications_sync.py`
+### `applications_localfile_sync.py`
 
 **Purpose**: Sync application registrations from Microsoft Graph  
 **Best for**: Security auditing, application inventory  
@@ -39,10 +39,10 @@ python examples/simple_local_sync.py
 **Storage**: Uses local `deltalinks/` folder
 
 ```bash
-python examples/simple_applications_sync.py
+python examples/applications_localfile_sync.py
 ```
 
-### `simple_service_principals_sync.py`
+### `serviceprincipals_localfile_sync.py`
 
 **Purpose**: Sync service principals (app instances) from Microsoft Graph  
 **Best for**: Security monitoring, compliance reporting  
@@ -50,7 +50,7 @@ python examples/simple_applications_sync.py
 **Storage**: Uses local `deltalinks/` folder
 
 ```bash
-python examples/simple_service_principals_sync.py
+python examples/serviceprincipals_localfile_sync.py
 ```
 
 ### `multi_resource_sync.py`
@@ -64,7 +64,7 @@ python examples/simple_service_principals_sync.py
 python examples/multi_resource_sync.py
 ```
 
-### `simple_azure_sync.py`
+### `users_azureblob_sync.py`
 
 **Purpose**: Get user data with Azure Blob Storage  
 **Best for**: Production deployments, cloud services, multi-instance scenarios  
@@ -72,18 +72,28 @@ python examples/multi_resource_sync.py
 **Storage**: Uses Azure Blob Storage container
 
 ```bash
-python examples/simple_azure_sync.py
+python examples/users_azureblob_sync.py
 ```
 
 ### `periodic_sync.py`
 
-**Purpose**: Continuous background synchronization  
-**Best for**: Services that need to stay up-to-date automatically  
-**What it does**: Runs periodic syncs, graceful shutdown, progress reporting  
-**Storage**: Auto-detects your storage configuration
+**Purpose**: Continuous background synchronization with configurable resource types  
+**Best for**: Services that need to stay up-to-date automatically, comprehensive tenant sync  
+**What it does**: Runs periodic syncs, graceful shutdown, progress reporting. Supports users, applications, service principals, and groups  
+**Storage**: Uses Azure Blob Storage by default (with Azurite fallback for development)
 
 ```bash
+# Sync applications (default)
 python examples/periodic_sync.py
+
+# Sync users instead
+python examples/periodic_sync.py --resource-type users
+
+# Sync service principals  
+python examples/periodic_sync.py --resource-type service_principals
+
+# Sync groups (if your app has permission)
+python examples/periodic_sync.py --resource-type groups
 ```
 
 ## Authentication Setup
@@ -105,13 +115,13 @@ All examples require Microsoft Graph authentication. Set up your environment:
 
 ## Storage Backends
 
-### Local File Storage (`simple_local_sync.py`)
+### Local File Storage (`users_localfile_sync.py`)
 
 - **Location**: `deltalinks/` directory
 - **Benefits**: Simple setup, no external dependencies
 - **Use when**: Development, testing, single-machine deployments
 
-### Azure Blob Storage (`simple_azure_sync.py`)
+### Azure Blob Storage (`users_azureblob_sync.py`)
 
 - **Location**: Azure Blob Storage container
 - **Benefits**: Cloud persistence, multi-instance support, production-ready
@@ -119,8 +129,8 @@ All examples require Microsoft Graph authentication. Set up your environment:
 
 ## Next Steps
 
-1. **Start with** `simple_local_sync.py` to understand the basics
-2. **Move to** `simple_azure_sync.py` for production scenarios  
+1. **Start with** `users_localfile_sync.py` to understand the basics
+2. **Move to** `users_azureblob_sync.py` for production scenarios  
 3. **Use** `periodic_sync.py` for continuous synchronization services
 
 Each example is self-contained and demonstrates a complete workflow from authentication to data retrieval to storage management.

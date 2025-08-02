@@ -59,8 +59,9 @@ async def sync_users():
                 if user.get("@removed"):
                     print(f"   🗑️  [DELETED] {user.get('id', 'N/A')}")
                 else:
-                    display_name = user.get('displayName', 'N/A')
-                    email = user.get('mail', user.get('userPrincipalName', 'N/A'))
+                    # The Graph SDK returns snake_case keys instead of camelCase
+                    display_name = user.get('display_name') or user.get('displayName', 'N/A')
+                    email = user.get('mail') or user.get('user_principal_name') or user.get('userPrincipalName', 'N/A')
                     print(f"   👤 {display_name} ({email})")
             
             if len(users) > 5:

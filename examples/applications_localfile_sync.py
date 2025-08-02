@@ -38,8 +38,7 @@ async def sync_applications():
     print(f"Started: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}\n")
 
     # Setup with deltalinks folder at project root (parent of examples directory)
-    storage = LocalFileDeltaLinkStorage(folder="../deltalinks")
-    client = AsyncDeltaQueryClient(delta_link_storage=storage)
+    client = AsyncDeltaQueryClient(delta_link_storage=LocalFileDeltaLinkStorage(folder="../deltalinks"))
 
     try:
         print("Syncing applications...")
