@@ -25,8 +25,13 @@ import signal
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import cast, List, Dict, Any, Union
 from dotenv import load_dotenv
 from msgraph_delta_query import AsyncDeltaQueryClient, AzureBlobDeltaLinkStorage
+from msgraph.generated.models.application import Application
+from msgraph.generated.models.user import User
+from msgraph.generated.models.service_principal import ServicePrincipal
+from msgraph.generated.models.group import Group
 
 
 class GraphSyncService:
@@ -78,38 +83,51 @@ class GraphSyncService:
             "id", "displayName", "createdDateTime"  # Default fields
         ])
     
-    def _format_object_display(self, obj: dict) -> str:
+    def _format_object_display(self, obj: Any) -> str:
         """Format object for display based on type."""
-        if obj.get("@removed"):
-            return f"[DELETED] {obj.get('id', 'N/A')}"
+        # Check for deleted objects (could be dict or SDK object)
+        is_removed = False
+        if hasattr(obj, '@removed'):
+            is_removed = getattr(obj, '@removed', False)
+        elif isinstance(obj, dict):
+            is_removed = obj.get("@removed", False)
         
-        # Handle field name mapping (snake_case vs camelCase)
-        display_name = obj.get('display_name') or obj.get('displayName', 'N/A')
+        if is_removed:
+            obj_id = getattr(obj, 'id', None) if hasattr(obj, 'id') else (obj.get('id', 'N/A') if isinstance(obj, dict) else 'N/A')
+            return f"[DELETED] {obj_id}"
+        
+        # Get display name safely
+        display_name = getattr(obj, 'display_name', None) if hasattr(obj, 'display_name') else 'N/A'
         
         if self.resource_type == "applications":
-            app_id = obj.get('app_id') or obj.get('appId', 'N/A')
-            publisher = obj.get('publisher_domain') or obj.get('publisherDomain', 'N/A')
-            return f"📱 {display_name} (AppId: {app_id[:8]}..., Publisher: {publisher})"
+            app_id = getattr(obj, 'app_id', None) if hasattr(obj, 'app_id') else 'N/A'
+            publisher = getattr(obj, 'publisher_domain', None) if hasattr(obj, 'publisher_domain') else 'N/A'
+            app_id_display = app_id[:8] + "..." if app_id and app_id != 'N/A' else 'N/A'
+            return f"📱 {display_name} (AppId: {app_id_display}, Publisher: {publisher})"
         
         elif self.resource_type == "users":
-            email = obj.get('mail') or obj.get('user_principal_name') or obj.get('userPrincipalName', 'N/A')
-            enabled = obj.get('account_enabled') or obj.get('accountEnabled', 'N/A')
+            mail = getattr(obj, 'mail', None) if hasattr(obj, 'mail') else None
+            upn = getattr(obj, 'user_principal_name', None) if hasattr(obj, 'user_principal_name') else None
+            email = mail or upn or 'N/A'
+            enabled = getattr(obj, 'account_enabled', None) if hasattr(obj, 'account_enabled') else 'N/A'
             return f"👤 {display_name} ({email}, Enabled: {enabled})"
         
         elif self.resource_type == "servicePrincipals":
-            app_id = obj.get('app_id') or obj.get('appId', 'N/A')
-            sp_type = obj.get('service_principal_type') or obj.get('servicePrincipalType', 'N/A')
-            return f"🔧 {display_name} (AppId: {app_id[:8]}..., Type: {sp_type})"
+            app_id = getattr(obj, 'app_id', None) if hasattr(obj, 'app_id') else 'N/A'
+            sp_type = getattr(obj, 'service_principal_type', None) if hasattr(obj, 'service_principal_type') else 'N/A'
+            app_id_display = app_id[:8] + "..." if app_id and app_id != 'N/A' else 'N/A'
+            return f"🔧 {display_name} (AppId: {app_id_display}, Type: {sp_type})"
         
         elif self.resource_type == "groups":
-            email = obj.get('mail', 'N/A')
-            group_types = obj.get('group_types') or obj.get('groupTypes', [])
-            return f"👥 {display_name} ({email}, Types: {group_types})"
+            mail = getattr(obj, 'mail', None) if hasattr(obj, 'mail') else 'N/A'
+            group_types = getattr(obj, 'group_types', None) if hasattr(obj, 'group_types') else []
+            return f"👥 {display_name} ({mail}, Types: {group_types})"
         
         else:
             # Generic display for other resource types
-            obj_id = obj.get('id', 'N/A')
-            return f"📄 {display_name} (ID: {obj_id[:8]}...)"
+            obj_id = getattr(obj, 'id', None) if hasattr(obj, 'id') else 'N/A'
+            obj_id_display = obj_id[:8] + "..." if obj_id and obj_id != 'N/A' else 'N/A'
+            return f"📄 {display_name} (ID: {obj_id_display})"
     
     async def sync_once(self) -> list:
         """Run a single sync operation."""
@@ -127,19 +145,31 @@ class GraphSyncService:
             client = AsyncDeltaQueryClient()
         
         try:
-            objects, delta_link, metadata = await client.delta_query_all(
+            objects_data, delta_link, metadata = await client.delta_query_all(
                 resource=self.resource_type,
                 select=self.select_fields,
                 top=1000
             )
+            
+            # Cast to appropriate SDK objects for better IDE support
+            if self.resource_type == "applications":
+                objects = cast(List[Application], objects_data)
+            elif self.resource_type == "users":
+                objects = cast(List[User], objects_data)
+            elif self.resource_type == "servicePrincipals":
+                objects = cast(List[ServicePrincipal], objects_data)
+            elif self.resource_type == "groups":
+                objects = cast(List[Group], objects_data)
+            else:
+                objects = objects_data  # Keep as-is for other types
             
             # Report results using the comprehensive sync results method
             metadata.print_sync_results(self.resource_type.title())
             
             # Show sample objects if any changes detected
             if metadata.change_summary.total > 0:
-                new_objects = [obj for obj in objects if not obj.get("@removed")]
-                deleted_objects = [obj for obj in objects if obj.get("@removed")]
+                new_objects = [obj for obj in objects if not (hasattr(obj, '@removed') and getattr(obj, '@removed', False)) and not (isinstance(obj, dict) and obj.get("@removed", False))]
+                deleted_objects = [obj for obj in objects if (hasattr(obj, '@removed') and getattr(obj, '@removed', False)) or (isinstance(obj, dict) and obj.get("@removed", False))]
                 
                 if new_objects:
                     print(f"\n📥 Sample New/Updated {self.resource_type}:")

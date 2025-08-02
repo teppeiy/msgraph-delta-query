@@ -53,15 +53,17 @@ python examples/applications_localfile_sync.py
 python examples/serviceprincipals_localfile_sync.py
 ```
 
-### `multi_resource_sync.py`
+### `sdk_objects_example.py`
 
-**Purpose**: Comprehensive sync of multiple resource types  
-**Best for**: Complete tenant inventory, security auditing  
-**What it does**: Syncs users, applications, service principals, and groups (if permitted)  
-**Storage**: Uses local `deltalinks/` folder
+**Purpose**: Demonstrates how to use SDK objects with proper typing  
+**Best for**: Learning best practices, understanding type casting  
+**What it does**: Shows how to cast dict responses to SDK objects for better IDE support  
+**Features**: Type hints, dot notation access, IDE autocomplete
 
 ```bash
-python examples/multi_resource_sync.py
+python examples/sdk_objects_example.py
+```
+python examples/sdk_objects_example.py
 ```
 
 ### `users_azureblob_sync.py`
@@ -112,6 +114,32 @@ All examples require Microsoft Graph authentication. Set up your environment:
    # Required for Azure Blob Storage examples
    AZURE_STORAGE_CONNECTION_STRING=your-connection-string
    ```
+
+## SDK Object Usage
+
+All examples demonstrate modern SDK object usage patterns. The library returns dict objects from Microsoft Graph, but you can cast them to SDK objects for better IDE support:
+
+```python
+from typing import cast, List
+from msgraph.generated.models.user import User
+
+# Get data from the library
+users_data, delta_link, metadata = await client.delta_query_all("users", select=["id", "displayName"])
+
+# Cast to SDK objects for better IDE support
+users = cast(List[User], users_data)
+
+# Use dot notation with full IDE autocomplete
+for user in users:
+    print(f"User: {user.display_name}")
+```
+
+**Benefits of SDK object casting:**
+
+- ✅ IDE autocomplete and type checking
+- ✅ Clean dot notation access (`user.display_name`)
+- ✅ Better code readability
+- ✅ Compile-time error detection
 
 ## Storage Backends
 

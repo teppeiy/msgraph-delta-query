@@ -14,14 +14,16 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import List, cast, Any, Dict
 from dotenv import load_dotenv
 from msgraph_delta_query import AsyncDeltaQueryClient
 from msgraph_delta_query.storage import LocalFileDeltaLinkStorage
+from msgraph.generated.models.user import User
 
 
 async def sync_users():
     """Sync users using local file storage for delta links."""
-    print("=== User Sync with Local Storage ===")
+    print("=== User Sync with Local Storage (SDK Objects) ===")
     print(f"Started: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}\n")
 
     # Setup with deltalinks folder at project root (parent of examples directory)
@@ -31,7 +33,7 @@ async def sync_users():
     try:
         print("Syncing users...")
         
-        # Get users with delta query - automatically handles full vs incremental sync
+        # Get users with delta query - returns User SDK objects
         users, delta_link, metadata = await client.delta_query_all(
             resource="users",
             select=[
@@ -43,6 +45,9 @@ async def sync_users():
             ],
             top=1000
         )
+        
+        # Cast for type hint purposes - objects are User SDK objects
+        users = cast(List[User], users)
 
         # Show results using the comprehensive sync results method
         metadata.print_sync_results("Users")
@@ -51,41 +56,24 @@ async def sync_users():
         if users:
             print(f"\n📋 Users ({len(users)} total):")
             for i, user in enumerate(users[:5]):
-                # Check for deleted users
-                if isinstance(user, dict) and user.get("@removed"):
-                    user_id = user.get('id', 'N/A')
-                    print(f"   🗑️  [DELETED] {user_id}")
+                # Check for removed objects - SDK objects use additional_data
+                removed_info = None
+                if hasattr(user, 'additional_data') and user.additional_data and user.additional_data.get("@removed"):
+                    removed_info = user.additional_data.get("@removed")
+                
+                if removed_info:
+                    print(f"   🗑️  [DELETED] {user.id or 'Unknown ID'}")
                 else:
-                    # Access user properties (assuming it's a dict based on debug output)
-                    if isinstance(user, dict):
-                        # The Graph SDK returns snake_case keys instead of camelCase
-                        display_name = user.get('display_name') or user.get('displayName', 'N/A')
-                        email = user.get('mail') or user.get('userPrincipalName', 'N/A')
-                        enabled = user.get('accountEnabled', 'N/A')
-                        user_id = user.get('id', 'N/A')
-                        user_id_display = user_id[:8] + "..." if user_id and user_id != 'N/A' else 'N/A'
-                        
-                        print(f"   👤 {display_name}")
-                        print(f"      Email: {email}")
-                        print(f"      Enabled: {enabled}")
-                        print(f"      ID: {user_id_display}")
-                        print()
-                    else:
-                        # Fallback for non-dict objects
-                        try:
-                            display_name = getattr(user, 'display_name', None) or getattr(user, 'displayName', None) or 'N/A'
-                            email = getattr(user, 'mail', None) or getattr(user, 'user_principal_name', None) or getattr(user, 'userPrincipalName', None) or 'N/A'
-                            enabled = getattr(user, 'account_enabled', None) or getattr(user, 'accountEnabled', None) or 'N/A'
-                            user_id = getattr(user, 'id', None)
-                            user_id_display = user_id[:8] + "..." if user_id else 'N/A'
-                            
-                            print(f"   👤 {display_name}")
-                            print(f"      Email: {email}")
-                            print(f"      Enabled: {enabled}")
-                            print(f"      ID: {user_id_display}")
-                            print()
-                        except Exception as e:
-                            print(f"   ❌ Error accessing user properties: {e}")
+                    # Access properties using dot notation
+                    user_id_display = user.id[:8] + "..." if user.id else 'N/A'
+                    email = user.mail or user.user_principal_name or 'N/A'
+                    
+                    print(f"   👤 {user.display_name or 'N/A'}")
+                    print(f"      Email: {email}")
+                    print(f"      Enabled: {user.account_enabled or 'N/A'}")
+                    print(f"      ID: {user_id_display}")
+                    print(f"      Type: {type(user).__name__}")
+                    print()
             
             if len(users) > 5:
                 print(f"   ... and {len(users) - 5} more users")

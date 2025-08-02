@@ -15,8 +15,10 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import cast, List, Dict, Any
 from dotenv import load_dotenv
 from msgraph_delta_query import AsyncDeltaQueryClient, AzureBlobDeltaLinkStorage
+from msgraph.generated.models.user import User
 
 
 async def sync_users():
@@ -33,7 +35,7 @@ async def sync_users():
         print("Syncing users...")
         
         # Get users with delta query - automatically handles full vs incremental sync
-        users, delta_link, metadata = await client.delta_query_all(
+        users_data, delta_link, metadata = await client.delta_query_all(
             resource="users",
             select=[
                 "id", 
@@ -45,6 +47,9 @@ async def sync_users():
             top=1000
         )
 
+        # Cast to SDK objects for better IDE support and dot notation access
+        users = cast(List[User], users_data)
+
         # Show results using the comprehensive sync results method
         metadata.print_sync_results("Users")
 
@@ -52,12 +57,13 @@ async def sync_users():
         if users:
             print(f"\n📋 Users ({len(users)} total):")
             for i, user in enumerate(users[:5]):
-                if user.get("@removed"):
-                    print(f"   🗑️  [DELETED] {user.get('id', 'N/A')}")
+                if hasattr(user, '@removed') or (isinstance(user, dict) and user.get("@removed")):
+                    user_id = user.id if hasattr(user, 'id') else (user.get('id', 'N/A') if isinstance(user, dict) else 'N/A')
+                    print(f"   🗑️  [DELETED] {user_id}")
                 else:
-                    # The Graph SDK returns snake_case keys instead of camelCase
-                    display_name = user.get('display_name') or user.get('displayName', 'N/A')
-                    email = user.get('mail') or user.get('user_principal_name') or user.get('userPrincipalName', 'N/A')
+                    # Use dot notation for cleaner code
+                    display_name = user.display_name or 'N/A'
+                    email = user.mail or user.user_principal_name or 'N/A'
                     print(f"   👤 {display_name} ({email})")
             
             if len(users) > 5:
