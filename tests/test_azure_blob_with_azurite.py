@@ -186,11 +186,12 @@ class TestAzureBlobStorageWithMocking:
              patch.object(storage, '_get_blob_service_client', new_callable=AsyncMock) as mock_get_client:
             
             # Setup mock clients properly - sync methods are Mock, async methods are AsyncMock
-            mock_blob_client = MagicMock()
+            mock_blob_client = AsyncMock()
             mock_container_client = MagicMock()  # sync methods
             mock_service_client = MagicMock()    # sync methods
-            
+
             # Configure ALL async blob client methods as AsyncMock
+            mock_blob_client = AsyncMock()
             mock_blob_client.upload_blob = AsyncMock()
             mock_blob_client.download_blob = AsyncMock()
             mock_blob_client.delete_blob = AsyncMock()

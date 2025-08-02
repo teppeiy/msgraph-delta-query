@@ -27,23 +27,27 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import List, cast, Any, Dict
 from dotenv import load_dotenv
 from msgraph_delta_query import AsyncDeltaQueryClient
 from msgraph_delta_query.storage import LocalFileDeltaLinkStorage
+from msgraph.generated.models.application import Application
 
 
 async def sync_applications():
     """Sync applications using local file storage for delta links."""
-    print("=== Application Sync with Local Storage ===")
+    print("=== Application Sync with Local Storage (SDK Objects) ===")
     print(f"Started: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}\n")
 
-    # Setup with deltalinks folder
-    client = AsyncDeltaQueryClient(delta_link_storage=LocalFileDeltaLinkStorage(folder="deltalinks"))
+    # Setup with deltalinks folder and enable SDK object return
+    client = AsyncDeltaQueryClient(
+        delta_link_storage=LocalFileDeltaLinkStorage(folder="deltalinks")
+    )
 
     try:
         print("Syncing applications...")
         
-        # Get applications with delta query - automatically handles full vs incremental sync
+        # Get applications with delta query - returns dict objects from Graph API
         applications, delta_link, metadata = await client.delta_query_all(
             resource="applications",
             select=[
@@ -54,8 +58,11 @@ async def sync_applications():
                 "publisherDomain",
                 "signInAudience"
             ],
-                        top=5  # Very small page size to see pagination behavior
+            top=5  # Very small page size to see pagination behavior
         )
+        
+        # Cast for type hint purposes - objects are Application SDK objects
+        applications = cast(List[Application], applications)
 
         # Show results using the comprehensive sync results method
         metadata.print_sync_results("Applications")
@@ -64,21 +71,22 @@ async def sync_applications():
         if applications:
             print(f"\n📋 Applications ({len(applications)} total):")
             for i, app in enumerate(applications[:5]):
-                if app.get("@removed"):
-                    print(f"   🗑️  [DELETED] {app.get('id', 'N/A')}")
+                # Check for removed objects - SDK objects use additional_data
+                removed_info = None
+                if hasattr(app, 'additional_data') and app.additional_data and app.additional_data.get("@removed"):
+                    removed_info = app.additional_data.get("@removed")
+                
+                if removed_info:
+                    print(f"   🗑️  [DELETED] {app.id or 'Unknown ID'}")
                 else:
-                    # The Graph SDK returns snake_case keys instead of camelCase
-                    display_name = app.get('display_name') or app.get('displayName', 'N/A')
-                    app_id = app.get('app_id') or app.get('appId', 'N/A')
-                    publisher = app.get('publisher_domain') or app.get('publisherDomain', 'N/A')
-                    audience = app.get('sign_in_audience') or app.get('signInAudience', 'N/A')
-                    created = app.get('created_date_time') or app.get('createdDateTime', 'N/A')
-                    
-                    print(f"   📱 {display_name}")
-                    print(f"      App ID: {app_id}")
-                    print(f"      Publisher: {publisher}")
-                    print(f"      Audience: {audience}")
-                    print(f"      Created: {created}")
+                    # Access properties using dot notation
+                    print(f"   📱 {app.display_name or 'N/A'}")
+                    print(f"      Object ID: {app.id or 'N/A'}")
+                    print(f"      App ID: {app.app_id or 'N/A'}")
+                    print(f"      Publisher: {app.publisher_domain or 'N/A'}")
+                    print(f"      Audience: {app.sign_in_audience or 'N/A'}")
+                    print(f"      Created: {app.created_date_time or 'N/A'}")
+                    print(f"      Type: {type(app).__name__}")
                     print()
             
             if len(applications) > 5:
