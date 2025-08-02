@@ -46,7 +46,7 @@ class TestIntegration:
                 assert len(objects) == 1
                 assert objects[0]["id"] == "user1"
                 assert delta_link == "https://graph.microsoft.com/v1.0/users/delta?$deltatoken=first_token"
-                assert meta["used_stored_deltalink"] is False
+                assert meta.used_stored_deltalink is False
             
             # Verify delta link was stored
             stored_link = await storage.get("users")
@@ -73,7 +73,7 @@ class TestIntegration:
                 assert len(objects2) == 1
                 assert objects2[0]["id"] == "user2"
                 assert delta_link2 == "https://graph.microsoft.com/v1.0/users/delta?$deltatoken=second_token"
-                assert meta2["used_stored_deltalink"] is True
+                assert meta2.used_stored_deltalink is True
                 
                 # Verify the stored delta token was used in the request
                 called_url = mock_request2.call_args[0][0]

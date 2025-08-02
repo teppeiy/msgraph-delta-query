@@ -7,6 +7,7 @@ with automatic delta link management and asynchronous support.
 
 from .client import AsyncDeltaQueryClient
 from .storage import DeltaLinkStorage, LocalFileDeltaLinkStorage
+from .models import ChangeSummary, ResourceParams, PageMetadata, DeltaQueryMetadata
 
 __version__ = "0.1.0"
 __author__ = "Your Name"
@@ -15,5 +16,9 @@ __email__ = "your.email@example.com"
 __all__ = [
     "AsyncDeltaQueryClient",
     "DeltaLinkStorage", 
-    "LocalFileDeltaLinkStorage"
+    "LocalFileDeltaLinkStorage",
+    "ChangeSummary",
+    "ResourceParams",
+    "PageMetadata", 
+    "DeltaQueryMetadata"
 ]

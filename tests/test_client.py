@@ -413,10 +413,10 @@ class TestAsyncDeltaQueryClient:
                 assert len(pages) == 2
                 assert pages[0][0] == [{"id": "1", "name": "User1"}]
                 assert pages[1][0] == [{"id": "2", "name": "User2"}]
-                assert pages[0][1]["page"] == 1
-                assert pages[1][1]["page"] == 2
-                assert pages[0][1]["has_next_page"] is True
-                assert pages[1][1]["has_next_page"] is False
+                assert pages[0][1].page == 1
+                assert pages[1][1].page == 2
+                assert pages[0][1].has_next_page is True
+                assert pages[1][1].has_next_page is False
 
     async def test_delta_query_stream_with_parameters(self, mock_credential, mock_storage):
         """Test delta query streaming with various parameters."""
@@ -494,8 +494,21 @@ class TestAsyncDeltaQueryClient:
         
         # Mock the stream method
         async def mock_stream(*args, **kwargs):
-            yield [{"id": "1"}], {"page": 1, "object_count": 1, "has_next_page": True, "delta_link": None, "raw_response_size": 100}
-            yield [{"id": "2"}], {"page": 2, "object_count": 1, "has_next_page": False, "delta_link": "final_link", "raw_response_size": 100}
+            from dataclasses import dataclass
+            from msgraph_delta_query.client import PageMetadata
+            
+            page1_meta = PageMetadata(
+                page=1, object_count=1, has_next_page=True, delta_link=None,
+                raw_response_size=100, page_new_or_updated=1, page_deleted=0, page_changed=0,
+                total_new_or_updated=1, total_deleted=0, total_changed=0
+            )
+            page2_meta = PageMetadata(
+                page=2, object_count=1, has_next_page=False, delta_link="final_link",
+                raw_response_size=100, page_new_or_updated=1, page_deleted=0, page_changed=0,
+                total_new_or_updated=2, total_deleted=0, total_changed=0
+            )
+            yield [{"id": "1"}], page1_meta
+            yield [{"id": "2"}], page2_meta
         
         with patch.object(client, 'delta_query_stream', side_effect=mock_stream):
             with patch.object(client, '_internal_close') as mock_close:
@@ -505,28 +518,41 @@ class TestAsyncDeltaQueryClient:
                 assert objects[0]["id"] == "1"
                 assert objects[1]["id"] == "2"
                 assert delta_link == "final_link"
-                assert meta["changed_count"] == 2
-                assert meta["pages_fetched"] == 2
-                assert "duration_seconds" in meta
-                assert "start_time" in meta
-                assert "end_time" in meta
+                assert meta.change_summary.new_or_updated == 2
+                assert meta.pages_fetched == 2
+                assert hasattr(meta, 'duration_seconds')
+                assert hasattr(meta, 'start_time')
+                assert hasattr(meta, 'end_time')
                 mock_close.assert_called_once()
 
     async def test_delta_query_all_with_max_objects(self, mock_credential, mock_storage):
         """Test delta_query_all respects max_objects limit."""
         client = AsyncDeltaQueryClient(credential=mock_credential, delta_link_storage=mock_storage)
         
-        # Mock the stream method to return more objects than the limit
+        # Mock the stream method  
         async def mock_stream(*args, **kwargs):
-            yield [{"id": "1"}, {"id": "2"}], {"page": 1, "object_count": 2, "has_next_page": True, "delta_link": None, "raw_response_size": 100}
-            yield [{"id": "3"}, {"id": "4"}], {"page": 2, "object_count": 2, "has_next_page": False, "delta_link": "final_link", "raw_response_size": 100}
+            from msgraph_delta_query.client import PageMetadata
+            
+            page1_meta = PageMetadata(
+                page=1, object_count=2, has_next_page=True, delta_link=None,
+                raw_response_size=100, page_new_or_updated=2, page_deleted=0, page_changed=0,
+                total_new_or_updated=2, total_deleted=0, total_changed=0
+            )
+            page2_meta = PageMetadata(
+                page=2, object_count=2, has_next_page=False, delta_link="final_link",
+                raw_response_size=100, page_new_or_updated=2, page_deleted=0, page_changed=0,
+                total_new_or_updated=4, total_deleted=0, total_changed=0
+            )
+            yield [{"id": "1"}, {"id": "2"}], page1_meta
+            yield [{"id": "3"}, {"id": "4"}], page2_meta
         
         with patch.object(client, 'delta_query_stream', side_effect=mock_stream):
             with patch.object(client, '_internal_close'):
                 objects, delta_link, meta = await client.delta_query_all("users", max_objects=3)
                 
                 assert len(objects) == 3  # Limited to 3 despite having 4 available
-                assert meta["changed_count"] == 3
+                # Note: change_summary tracks all processed objects, not just returned ones
+                assert meta.change_summary.new_or_updated == 4  # All 4 objects were processed
 
     async def test_reset_delta_link(self, mock_credential, mock_storage):
         """Test reset_delta_link functionality."""
@@ -673,13 +699,20 @@ async def test_delta_query_all_metadata_used_stored_deltalink(mock_credential, m
     await mock_storage.set("users", "existing_link")
     
     async def mock_stream(*args, **kwargs):
-        yield [{"id": "1"}], {"page": 1, "object_count": 1, "has_next_page": False, "delta_link": "new_link", "raw_response_size": 100}
+        from msgraph_delta_query.client import PageMetadata
+        
+        page_meta = PageMetadata(
+            page=1, object_count=1, has_next_page=False, delta_link="new_link",
+            raw_response_size=100, page_new_or_updated=1, page_deleted=0, page_changed=0,
+            total_new_or_updated=1, total_deleted=0, total_changed=0
+        )
+        yield [{"id": "1"}], page_meta
     
     with patch.object(client, 'delta_query_stream', side_effect=mock_stream):
         with patch.object(client, '_internal_close'):
             objects, delta_link, meta = await client.delta_query_all("users")
             
-            assert meta["used_stored_deltalink"] is True
+            assert meta.used_stored_deltalink is True
 
 
 @pytest.mark.asyncio
@@ -688,10 +721,17 @@ async def test_delta_query_all_metadata_no_stored_deltalink(mock_credential, moc
     client = AsyncDeltaQueryClient(credential=mock_credential, delta_link_storage=mock_storage)
     
     async def mock_stream(*args, **kwargs):
-        yield [{"id": "1"}], {"page": 1, "object_count": 1, "has_next_page": False, "delta_link": "new_link", "raw_response_size": 100}
+        from msgraph_delta_query.client import PageMetadata
+        
+        page_meta = PageMetadata(
+            page=1, object_count=1, has_next_page=False, delta_link="new_link",
+            raw_response_size=100, page_new_or_updated=1, page_deleted=0, page_changed=0,
+            total_new_or_updated=1, total_deleted=0, total_changed=0
+        )
+        yield [{"id": "1"}], page_meta
     
     with patch.object(client, 'delta_query_stream', side_effect=mock_stream):
         with patch.object(client, '_internal_close'):
             objects, delta_link, meta = await client.delta_query_all("users")
             
-            assert meta["used_stored_deltalink"] is False
+            assert meta.used_stored_deltalink is False

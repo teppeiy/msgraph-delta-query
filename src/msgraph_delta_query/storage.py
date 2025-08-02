@@ -9,6 +9,8 @@ class DeltaLinkStorage:
     """Abstract base class for delta link storage."""
     async def get(self, resource: str) -> Optional[str]:
         raise NotImplementedError
+    async def get_metadata(self, resource: str) -> Optional[Dict]:
+        raise NotImplementedError
     async def set(self, resource: str, delta_link: str, metadata: Optional[Dict] = None):
         raise NotImplementedError
     async def delete(self, resource: str):
@@ -35,6 +37,23 @@ class LocalFileDeltaLinkStorage(DeltaLinkStorage):
                     return data.get("delta_link")
             except Exception as e:
                 logging.warning(f"Failed to read delta link for {resource}: {e}")
+                return None
+        return None
+
+    async def get_metadata(self, resource: str) -> Optional[Dict]:
+        """Get metadata for a resource including last sync time."""
+        path = self._get_resource_path(resource)
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    return {
+                        "last_updated": data.get("last_updated"),
+                        "metadata": data.get("metadata", {}),
+                        "resource": data.get("resource")
+                    }
+            except Exception as e:
+                logging.warning(f"Failed to read metadata for {resource}: {e}")
                 return None
         return None
 

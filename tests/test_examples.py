@@ -3,7 +3,7 @@
 import pytest
 import asyncio
 import logging
-from unittest.mock import patch, AsyncMock, Mock
+from unittest.mock import patch, AsyncMock, Mock, call
 import json
 
 from msgraph_delta_query.client import example_usage
@@ -14,10 +14,27 @@ async def test_example_usage():
     """Test the example_usage function."""
     # Mock the entire client behavior
     mock_client = AsyncMock()
+    from msgraph_delta_query.client import DeltaQueryMetadata, ChangeSummary, ResourceParams
+    from datetime import datetime, timezone
+    
+    change_summary = ChangeSummary(new_or_updated=2, deleted=0, changed=0)
+    resource_params = ResourceParams(select=["id", "displayName", "mail"], filter=None, top=100)
+    
+    mock_metadata = DeltaQueryMetadata(
+        changed_count=2,
+        pages_fetched=1,
+        duration_seconds=1.23,
+        start_time=datetime.now(timezone.utc).isoformat(),
+        end_time=datetime.now(timezone.utc).isoformat(),
+        used_stored_deltalink=False,
+        change_summary=change_summary,
+        resource_params=resource_params
+    )
+    
     mock_client.delta_query_all.return_value = (
         [{"id": "1", "displayName": "User 1"}, {"id": "2", "displayName": "User 2"}],
         "https://example.com/delta?token=abc",
-        {"duration_seconds": 1.23, "changed_count": 2}
+        mock_metadata
     )
     
     with patch('msgraph_delta_query.client.AsyncDeltaQueryClient', return_value=mock_client):
@@ -32,9 +49,11 @@ async def test_example_usage():
             )
             
             # Verify the output
-            mock_print.assert_called_once_with("Retrieved 2 users in 1.23s")
-
-
+            expected_calls = [
+                call("Retrieved 2 users in 1.23s"),
+                call("Change summary: 2 new/updated, 0 deleted, 0 changed")
+            ]
+            mock_print.assert_has_calls(expected_calls)
 @pytest.mark.asyncio 
 async def test_real_world_scenario_user_sync():
     """Test a real-world user synchronization scenario."""
@@ -75,9 +94,9 @@ async def test_real_world_scenario_user_sync():
             )
             
             assert len(users) == 2
-            assert meta["used_stored_deltalink"] is False
+            assert meta.used_stored_deltalink is False
             
-        # Simulate incremental sync (using stored delta link)  
+            # Simulate incremental sync (using stored delta link)  
         incremental_response = {
             "value": [
                 {"id": "3", "displayName": "Bob Johnson", "mail": "bob@example.com"},
@@ -103,7 +122,7 @@ async def test_real_world_scenario_user_sync():
             )
             
             assert len(changes) == 2
-            assert meta2["used_stored_deltalink"] is True
+            assert meta2.used_stored_deltalink is True
             
             # Verify the call used the stored delta token
             called_url = mock_request2.call_args[0][0]
@@ -161,14 +180,14 @@ async def test_real_world_scenario_large_dataset_pagination():
             all_users.extend(users)
             page_count += 1
             
-            assert page_meta["page"] == page_count
-            assert page_meta["object_count"] == len(users)
+            assert page_meta.page == page_count
+            assert page_meta.object_count == len(users)
             
             if page_count < 3:
-                assert page_meta["has_next_page"] is True
+                assert page_meta.has_next_page is True
             else:
-                assert page_meta["has_next_page"] is False
-                assert page_meta["delta_link"] == "https://graph.microsoft.com/v1.0/users/delta?$deltatoken=final_token"
+                assert page_meta.has_next_page is False
+                assert page_meta.delta_link == "https://graph.microsoft.com/v1.0/users/delta?$deltatoken=final_token"
         
         assert len(all_users) == 250
         assert page_count == 3

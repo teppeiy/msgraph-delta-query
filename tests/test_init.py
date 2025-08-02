@@ -43,7 +43,11 @@ def test_all_exports():
     expected_exports = [
         "AsyncDeltaQueryClient",
         "DeltaLinkStorage", 
-        "LocalFileDeltaLinkStorage"
+        "LocalFileDeltaLinkStorage",
+        "ChangeSummary",
+        "ResourceParams",
+        "PageMetadata",
+        "DeltaQueryMetadata"
     ]
     
     assert __all__ == expected_exports

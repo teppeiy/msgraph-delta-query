@@ -6,10 +6,11 @@ import urllib.parse
 import asyncio
 import weakref
 from typing import Optional, Any, Dict, List, Tuple, AsyncGenerator
+from dataclasses import dataclass
 from azure.identity.aio import DefaultAzureCredential
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from .storage import DeltaLinkStorage, LocalFileDeltaLinkStorage
-
+from .models import ChangeSummary, ResourceParams, PageMetadata, DeltaQueryMetadata
 
 
 
@@ -45,6 +46,8 @@ class AsyncDeltaQueryClient:
         self._credential_created = False
         self._initialized = False
         self._closed = False
+        self._cached_token: Optional[str] = None
+        self._token_expires_at: Optional[datetime] = None
         
         # Register this instance for cleanup
         _client_registry.add(self)
@@ -95,6 +98,10 @@ class AsyncDeltaQueryClient:
             
         self._closed = True
         
+        # Clear cached token
+        self._cached_token = None
+        self._token_expires_at = None
+        
         # Close our session
         if self._session and not self._session.closed:
             await self._session.close()
@@ -113,16 +120,41 @@ class AsyncDeltaQueryClient:
         self._credential_created = False
         self._initialized = False
 
-    async def get_token(self) -> str:
-        """Get access token for Microsoft Graph API."""
+    async def get_token(self, force_refresh: bool = False) -> str:
+        """
+        Get access token for Microsoft Graph API with caching and automatic refresh.
+        
+        Args:
+            force_refresh: If True, forces a new token to be acquired
+        """
         await self._initialize()
         if self.credential is None:
             raise ValueError("Credential is not initialized")
+        
+        # Check if we have a valid cached token
+        if not force_refresh and self._cached_token and self._token_expires_at:
+            # Add 5 minute buffer before token expiry to avoid edge cases
+            buffer_time = datetime.now(timezone.utc).replace(microsecond=0) + timedelta(minutes=5)
+            if self._token_expires_at > buffer_time:
+                logging.debug("Using cached token")
+                return self._cached_token
+        
         try:
+            logging.debug("Acquiring new access token")
             token = await self.credential.get_token("https://graph.microsoft.com/.default")
-            return token.token
+            
+            # Cache the token and calculate expiry
+            self._cached_token = token.token
+            self._token_expires_at = datetime.fromtimestamp(token.expires_on, tz=timezone.utc)
+            
+            logging.debug(f"Token acquired, expires at: {self._token_expires_at}")
+            return self._cached_token
+            
         except Exception as e:
             logging.error(f"Failed to get access token: {e}")
+            # Clear cached token on error
+            self._cached_token = None
+            self._token_expires_at = None
             raise
 
     async def _make_request(
@@ -130,7 +162,7 @@ class AsyncDeltaQueryClient:
         url: str, 
         headers: Dict[str, str]
     ) -> Tuple[int, str, Dict[str, Any]]:
-        """Make HTTP request with rate limiting and error handling."""
+        """Make HTTP request with rate limiting, error handling, and token refresh."""
         await self._initialize()
         
         if self._session is None:
@@ -139,6 +171,7 @@ class AsyncDeltaQueryClient:
         async with self.semaphore:
             backoff, max_backoff = 1, 60
             max_retries = 5
+            token_refreshed = False
             
             for attempt in range(max_retries):
                 try:
@@ -146,7 +179,25 @@ class AsyncDeltaQueryClient:
                     async with self._session.get(url, headers=headers) as resp:
                         text = await resp.text()
                         
-                        if resp.status == 429:
+                        if resp.status == 401:
+                            # Token expired or invalid - try to refresh once per request
+                            if not token_refreshed:
+                                logging.warning("Unauthorized (401) - attempting token refresh")
+                                try:
+                                    # Force refresh the token
+                                    new_token = await self.get_token(force_refresh=True)
+                                    headers["Authorization"] = f"Bearer {new_token}"
+                                    token_refreshed = True
+                                    
+                                    # Don't count this as a retry attempt for other errors
+                                    continue
+                                except Exception as token_error:
+                                    logging.error(f"Token refresh failed: {token_error}")
+                                    return resp.status, text, {}
+                            else:
+                                logging.error("Unauthorized (401) after token refresh - authentication failed")
+                                return resp.status, text, {}
+                        elif resp.status == 429:
                             retry_after = resp.headers.get("Retry-After")
                             wait = int(retry_after) if retry_after and retry_after.isdigit() else backoff
                             logging.warning(f"Rate limited (429) - waiting {wait}s before retry")
@@ -163,9 +214,6 @@ class AsyncDeltaQueryClient:
                             await asyncio.sleep(backoff)
                             backoff = min(backoff * 2, max_backoff)
                             continue
-                        elif resp.status == 401:
-                            logging.error("Unauthorized (401) - token may be expired")
-                            return resp.status, text, {}
                         elif resp.status != 200:
                             logging.error(f"HTTP {resp.status}: {text}")
                             return resp.status, text, {}
@@ -196,17 +244,31 @@ class AsyncDeltaQueryClient:
         delta_link: Optional[str] = None,
         deltatoken_latest: bool = False,
         top: Optional[int] = None
-    ) -> AsyncGenerator[Tuple[List[Dict[str, Any]], Dict[str, Any]], None]:
+    ) -> AsyncGenerator[Tuple[List[Dict[str, Any]], PageMetadata], None]:
         """
         Stream delta query results page by page.
         Yields (objects, page_metadata) for each page.
         """
         page = 0
         next_link: Optional[str] = None
+        total_new_or_updated = 0
+        total_deleted = 0
+        total_changed = 0
         
-        # Load existing delta link if not provided
+        # Load existing delta link if not provided and get previous sync timestamp
+        previous_sync_timestamp = None
+        used_stored_deltalink = False
         if not delta_link:
             delta_link = await self.delta_link_storage.get(resource)
+            used_stored_deltalink = bool(delta_link)
+            # Get the timestamp from the previous sync only if we found a stored delta link
+            if used_stored_deltalink:
+                metadata = await self.delta_link_storage.get_metadata(resource)
+                if metadata and metadata.get("last_updated"):
+                    try:
+                        previous_sync_timestamp = datetime.fromisoformat(metadata["last_updated"].replace('Z', '+00:00'))
+                    except Exception:
+                        pass  # If parsing fails, continue without the timestamp
 
         token = await self.get_token()
         headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
@@ -249,20 +311,64 @@ class AsyncDeltaQueryClient:
             next_link = result.get("@odata.nextLink")
             delta_link_resp = result.get("@odata.deltaLink")
 
-            page_meta = {
-                "page": page,
-                "object_count": len(objects),
-                "has_next_page": bool(next_link),
-                "delta_link": delta_link_resp,
-                "raw_response_size": len(text)
-            }
+            # Analyze change types in this page
+            page_new_or_updated = 0
+            page_deleted = 0
+            page_changed = 0
+            
+            for obj in objects:
+                removed_info = obj.get("@removed")
+                if removed_info:
+                    reason = removed_info.get("reason", "unknown")
+                    if reason == "deleted":
+                        page_deleted += 1
+                        total_deleted += 1
+                    elif reason == "changed":
+                        page_changed += 1
+                        total_changed += 1
+                    else:
+                        # Unknown removal reason, count as changed
+                        page_changed += 1
+                        total_changed += 1
+                else:
+                    # No @removed property means new or updated object
+                    page_new_or_updated += 1
+                    total_new_or_updated += 1
+
+            page_meta = PageMetadata(
+                page=page,
+                object_count=len(objects),
+                has_next_page=bool(next_link),
+                delta_link=delta_link_resp,
+                raw_response_size=len(text),
+                page_new_or_updated=page_new_or_updated,
+                page_deleted=page_deleted,
+                page_changed=page_changed,
+                total_new_or_updated=total_new_or_updated,
+                total_deleted=total_deleted,
+                total_changed=total_changed,
+                since_timestamp=previous_sync_timestamp
+            )
 
             # Save delta link whenever we get one, not just at the end
             # This ensures it's saved even if the user breaks early from the loop
             if delta_link_resp:
+                change_summary = ChangeSummary(
+                    new_or_updated=total_new_or_updated,
+                    deleted=total_deleted,
+                    changed=total_changed,
+                    timestamp=previous_sync_timestamp  # Only set if this was an incremental sync
+                )
+                
                 metadata = {
                     "last_sync": datetime.now(timezone.utc).isoformat(),
                     "total_pages": page,
+                    "change_summary": {
+                        "new_or_updated": change_summary.new_or_updated,
+                        "deleted": change_summary.deleted,
+                        "changed": change_summary.changed,
+                        "total": change_summary.total
+                    },
                     "resource_params": {
                         "select": select,
                         "filter": filter,
@@ -270,7 +376,8 @@ class AsyncDeltaQueryClient:
                     }
                 }
                 await self.delta_link_storage.set(resource, delta_link_resp, metadata)
-                logging.info(f"Saved delta link for {resource} (page {page})")
+                logging.info(f"Saved delta link for {resource} (page {page}) - "
+                           f"{total_new_or_updated} new/updated, {total_deleted} deleted, {total_changed} changed")
 
             yield objects, page_meta
 
@@ -287,7 +394,7 @@ class AsyncDeltaQueryClient:
         deltatoken_latest: bool = False,
         top: Optional[int] = None,
         max_objects: Optional[int] = None
-    ) -> Tuple[List[Dict[str, Any]], Optional[str], Dict[str, Any]]:
+    ) -> Tuple[List[Dict[str, Any]], Optional[str], DeltaQueryMetadata]:
         """
         Execute delta query and return all results.
         Enhanced with better metadata and optional limits.
@@ -297,19 +404,43 @@ class AsyncDeltaQueryClient:
         total_pages = 0
         start_time = datetime.now(timezone.utc)
         
+        # Track change types
+        total_new_or_updated = 0
+        total_deleted = 0
+        total_changed = 0
+        
         # Check if we used a stored delta link before starting
         used_stored_deltalink = bool(not delta_link and await self.delta_link_storage.get(resource))
+        
+        # Get the timestamp from the previous sync to show "updates since"
+        # Only set this if we're actually using a stored delta link (incremental sync)
+        previous_sync_timestamp = None
+        if used_stored_deltalink:
+            metadata = await self.delta_link_storage.get_metadata(resource)
+            if metadata and metadata.get("last_updated"):
+                try:
+                    previous_sync_timestamp = datetime.fromisoformat(metadata["last_updated"].replace('Z', '+00:00'))
+                except Exception:
+                    pass  # If parsing fails, continue without the timestamp
 
         try:
             async for objects, page_meta in self.delta_query_stream(
                 resource, select, filter, delta_link, deltatoken_latest, top
             ):
                 all_objects.extend(objects)
-                total_pages = page_meta["page"]
-                final_delta_link = page_meta.get("delta_link") or final_delta_link
+                total_pages = page_meta.page
+                final_delta_link = page_meta.delta_link or final_delta_link
+                
+                # Update totals from page metadata
+                total_new_or_updated = page_meta.total_new_or_updated
+                total_deleted = page_meta.total_deleted
+                total_changed = page_meta.total_changed
                 
                 logging.info(f"Page {total_pages}: received {len(objects)} objects "
-                            f"(cumulative: {len(all_objects)})")
+                            f"(cumulative: {len(all_objects)}) - "
+                            f"{page_meta.page_new_or_updated} new/updated, "
+                            f"{page_meta.page_deleted} deleted, "
+                            f"{page_meta.page_changed} changed")
                 
                 # Respect max_objects limit
                 if max_objects and len(all_objects) >= max_objects:
@@ -323,21 +454,31 @@ class AsyncDeltaQueryClient:
         end_time = datetime.now(timezone.utc)
         duration = (end_time - start_time).total_seconds()
 
-        meta = {
-            "changed_count": len(all_objects),
-            "pages_fetched": total_pages,
-            "duration_seconds": duration,
-            "start_time": start_time.isoformat(),
-            "end_time": end_time.isoformat(),
-            "used_stored_deltalink": used_stored_deltalink,
-            "resource_params": {
-                "select": select,
-                "filter": filter,
-                "top": top,
-                "deltatoken_latest": deltatoken_latest,
-                "max_objects": max_objects
-            }
-        }
+        change_summary = ChangeSummary(
+            new_or_updated=total_new_or_updated,
+            deleted=total_deleted,
+            changed=total_changed,
+            timestamp=previous_sync_timestamp  # Only set if this was an incremental sync
+        )
+        
+        resource_params = ResourceParams(
+            select=select,
+            filter=filter,
+            top=top,
+            deltatoken_latest=deltatoken_latest,
+            max_objects=max_objects
+        )
+
+        meta = DeltaQueryMetadata(
+            changed_count=len(all_objects),
+            pages_fetched=total_pages,
+            duration_seconds=duration,
+            start_time=start_time.isoformat(),
+            end_time=end_time.isoformat(),
+            used_stored_deltalink=used_stored_deltalink,
+            change_summary=change_summary,
+            resource_params=resource_params
+        )
 
         return all_objects, final_delta_link, meta
 
@@ -371,7 +512,9 @@ async def example_usage():
         top=100
     )
     
-    print(f"Retrieved {len(users)} users in {meta['duration_seconds']:.2f}s")
+    print(f"Retrieved {len(users)} users in {meta.duration_seconds:.2f}s")
+    print(f"Change summary: {meta.change_summary.new_or_updated} new/updated, "
+          f"{meta.change_summary.deleted} deleted, {meta.change_summary.changed} changed")
     # No need to close anything - handled automatically
 
 if __name__ == "__main__":
