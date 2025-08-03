@@ -7,6 +7,8 @@ type safety, and maintainability.
 """
 
 import logging
+logger = logging.getLogger(__name__)
+
 import urllib.parse
 import asyncio
 import weakref
@@ -31,7 +33,7 @@ async def _cleanup_all_clients() -> None:
         try:
             await client._internal_close()
         except Exception as e:
-            logging.warning(f"Error cleaning up client: {e}")
+            logger.warning(f"Error cleaning up client: {e}")
 
 
 class AsyncDeltaQueryClient:
@@ -56,6 +58,7 @@ class AsyncDeltaQueryClient:
         credential: Optional[DefaultAzureCredential] = None,
         delta_link_storage: Optional[DeltaLinkStorage] = None,
         scopes: Optional[List[str]] = None,
+        logger_: Optional[logging.Logger] = None,
     ):
         """
         Initialize the Microsoft Graph SDK-based delta query client.
@@ -72,6 +75,7 @@ class AsyncDeltaQueryClient:
         self._credential_created = False
         self._initialized = False
         self._closed = False
+        self.logger = logger_ or logger
 
         # Log the delta link storage source being used
         storage_type = type(self.delta_link_storage).__name__
@@ -109,7 +113,7 @@ class AsyncDeltaQueryClient:
             )
             storage_info += f" (Directory: {deltalinks_dir})"
 
-        logging.info(storage_info)
+        self.logger.info(storage_info)
 
         # Register this instance for cleanup
         _client_registry.add(self)
@@ -149,7 +153,7 @@ class AsyncDeltaQueryClient:
         if self.credential is None:
             self.credential = DefaultAzureCredential()
             self._credential_created = True
-            logging.debug("Created DefaultAzureCredential")
+            self.logger.debug("Created DefaultAzureCredential")
 
         # Create Graph client with the credential
         self._graph_client = GraphServiceClient(
@@ -157,7 +161,7 @@ class AsyncDeltaQueryClient:
             scopes=self.scopes
         )
 
-        logging.debug("Created GraphServiceClient with Microsoft Graph SDK")
+        self.logger.debug("Created GraphServiceClient with Microsoft Graph SDK")
         self._initialized = True
 
     async def _internal_close(self) -> None:
@@ -165,51 +169,51 @@ class AsyncDeltaQueryClient:
         if self._closed:
             return
 
-        logging.debug("Starting _internal_close()")
+        self.logger.debug("Starting _internal_close()")
         self._closed = True
 
         # Close Graph client if it exists
         if self._graph_client:
-            logging.debug("Graph client exists, attempting to close HTTP client")
+            self.logger.debug("Graph client exists, attempting to close HTTP client")
             # The Microsoft Graph SDK manages its own HTTP client lifecycle
             # We'll let the SDK handle cleanup automatically
             try:
                 # Try to access the request adapter to see if it exists
                 if hasattr(self._graph_client, 'request_adapter') and self._graph_client.request_adapter:
-                    logging.debug("Request adapter found - SDK will handle HTTP client cleanup")
+                    self.logger.debug("Request adapter found - SDK will handle HTTP client cleanup")
                     # Note: We don't directly access _http_client as it's a private attribute
                     # The SDK will handle proper cleanup of the HTTP client internally
                 else:
-                    logging.debug("No request adapter found")
+                    self.logger.debug("No request adapter found")
             except Exception as e:
-                logging.warning(f"Error checking request adapter: {e}")
+                self.logger.warning(f"Error checking request adapter: {e}")
             
             # The SDK handles its own cleanup
             self._graph_client = None
-            logging.debug("Closed GraphServiceClient")
+            self.logger.debug("Closed GraphServiceClient")
         else:
-            logging.debug("No graph client to close")
+            self.logger.debug("No graph client to close")
 
         # Close delta link storage
         if self.delta_link_storage and hasattr(self.delta_link_storage, 'close'):
             try:
                 await self.delta_link_storage.close()
-                logging.debug("Closed delta link storage")
+                self.logger.debug("Closed delta link storage")
             except Exception as e:
-                logging.warning(f"Error closing delta link storage: {e}")
+                self.logger.warning(f"Error closing delta link storage: {e}")
 
         # Close credential if we created it
         if self.credential and self._credential_created:
             try:
                 await self.credential.close()
-                logging.debug("Closed DefaultAzureCredential")
+                self.logger.debug("Closed DefaultAzureCredential")
             except Exception as e:
-                logging.warning(f"Error closing credential: {e}")
+                self.logger.warning(f"Error closing credential: {e}")
 
         self.credential = None
         self._credential_created = False
         self._initialized = False
-        logging.debug("Completed _internal_close()")
+        self.logger.debug("Completed _internal_close()")
 
     def _get_delta_request_builder(self, resource: str) -> Any:
         """Get the appropriate delta request builder for the resource type."""
@@ -286,7 +290,7 @@ class AsyncDeltaQueryClient:
             dt = qs.get("$deltatoken") or qs.get("deltatoken")
             return dt[0] if dt else None
         except Exception as e:
-            logging.warning(f"Failed to extract delta token from link: {e}")
+            self.logger.warning(f"Failed to extract delta token from link: {e}")
             return None
 
     def _extract_skiptoken_from_url(self, url: Optional[str]) -> Optional[str]:
@@ -300,7 +304,7 @@ class AsyncDeltaQueryClient:
             st = qs.get("$skiptoken") or qs.get("skiptoken")
             return st[0] if st else None
         except Exception as e:
-            logging.warning(f"Failed to extract skiptoken from URL: {e}")
+            self.logger.warning(f"Failed to extract skiptoken from URL: {e}")
             return None
 
     async def _execute_delta_request(
@@ -338,7 +342,7 @@ class AsyncDeltaQueryClient:
                     # For skiptoken, we'll need to fall back to using the 
                     # original approach but still through the Graph Service 
                     # Client when possible
-                    logging.debug(f"Handling skiptoken pagination: {value}")
+                    self.logger.debug(f"Handling skiptoken pagination: {value}")
 
             # Create request configuration
             request_config = RequestConfigClass(
@@ -363,14 +367,14 @@ class AsyncDeltaQueryClient:
             if (is_delta_error and fallback_to_full_sync and
                     "deltatoken" in query_params and used_stored_deltalink):
 
-                logging.warning(
+                self.logger.warning(
                     f"Delta token failed ({e}), falling back to full sync for "
                     f"{resource}"
                 )
 
                 # Clear stored delta link if it was invalid
                 if used_stored_deltalink:
-                    logging.info(
+                    self.logger.info(
                         f"Clearing invalid stored delta link for {resource}"
                     )
                     await self.delta_link_storage.delete(resource)
@@ -393,7 +397,7 @@ class AsyncDeltaQueryClient:
                     return response, True
 
                 except Exception as fallback_error:
-                    logging.error(
+                    self.logger.error(
                         f"Fallback to full sync also failed: {fallback_error}"
                     )
                     raise fallback_error
@@ -473,7 +477,7 @@ class AsyncDeltaQueryClient:
         try:
             if used_stored_deltalink and stored_delta_link:
                 # Use the stored delta link directly - it contains all original parameters
-                logging.info(f"Using stored delta link for {resource} incremental sync")
+                self.logger.info(f"Using stored delta link for {resource} incremental sync")
 
                 try:
                     # Create a request info object for the stored delta link URL
@@ -508,7 +512,7 @@ class AsyncDeltaQueryClient:
 
                 except Exception as e:
                     if fallback_to_full_sync:
-                        logging.warning(f"Stored delta link failed ({e}), falling back to full sync with current parameters")
+                        self.logger.warning(f"Stored delta link failed ({e}), falling back to full sync with current parameters")
 
                         # Clear the invalid stored delta link
                         await self.delta_link_storage.delete(resource)
@@ -555,7 +559,7 @@ class AsyncDeltaQueryClient:
                 used_stored_deltalink = False  # No longer using stored delta link after fallback
 
         except Exception as e:
-            logging.error(f"Failed to execute delta query for {resource}: {e}")
+            self.logger.error(f"Failed to execute delta query for {resource}: {e}")
             raise
 
         # Process pages
@@ -649,13 +653,13 @@ class AsyncDeltaQueryClient:
                     "resource_params": {"select": select, "filter": filter, "top": top},
                 }
                 await self.delta_link_storage.set(resource, delta_link_resp, metadata)
-                logging.info(
+                self.logger.info(
                     f"Saved delta link for {resource} (page {page}) - "
                     f"{total_new_or_updated} new/updated, {total_deleted} deleted, "
                     f"{total_changed} changed"
                 )
             else:
-                logging.debug(f"No delta link found on page {page} for {resource}")
+                self.logger.debug(f"No delta link found on page {page} for {resource}")
 
             yield objects, page_meta
 
@@ -665,12 +669,12 @@ class AsyncDeltaQueryClient:
 
             # For delta queries, follow pagination using the next URL directly
             next_url = response.odata_next_link
-            logging.debug(f"Following next page URL: {next_url}")
+            self.logger.debug(f"Following next page URL: {next_url}")
 
             try:
                 # Use the Graph SDK's request adapter to make a direct request to the next URL
                 # This preserves all the parameters encoded in the next_url
-                logging.info(f"Calling delta query for resource: {resource} page {page + 1}")
+                self.logger.info(f"Calling delta query for resource: {resource} page {page + 1}")
 
                 # Create a request info object for the next URL
                 from kiota_abstractions.request_information import RequestInformation
@@ -694,7 +698,7 @@ class AsyncDeltaQueryClient:
 
                 # Ensure the graph client and request adapter are available
                 if not self._graph_client or not self._graph_client.request_adapter:
-                    logging.error("Graph client or request adapter not available")
+                    self.logger.error("Graph client or request adapter not available")
                     break
 
                 # Use the request adapter to send the request
@@ -703,7 +707,7 @@ class AsyncDeltaQueryClient:
                 )
 
             except Exception as e:
-                logging.error(f"Error fetching next page: {e}")
+                self.logger.error(f"Error fetching next page: {e}")
                 break
 
     async def delta_query(
@@ -782,7 +786,7 @@ class AsyncDeltaQueryClient:
             total_deleted = page_meta.total_deleted
             total_changed = page_meta.total_changed
 
-            logging.info(
+            self.logger.info(
                 f"Page {total_pages}: received {len(objects)} objects "
                 f"(cumulative: {len(all_objects)}) - "
                 f"{page_meta.page_new_or_updated} new/updated, "
@@ -792,7 +796,7 @@ class AsyncDeltaQueryClient:
 
             # Respect max_objects limit
             if max_objects and len(all_objects) >= max_objects:
-                logging.info(f"Reached max_objects limit ({max_objects})")
+                self.logger.info(f"Reached max_objects limit ({max_objects})")
                 # Trim the list to the exact limit
                 all_objects = all_objects[:max_objects]
                 break
@@ -831,7 +835,7 @@ class AsyncDeltaQueryClient:
     async def reset_delta_link(self, resource: str) -> None:
         """Reset/delete the stored delta link for a resource."""
         await self.delta_link_storage.delete(resource)
-        logging.info(f"Reset delta link for {resource}")
+        self.logger.info(f"Reset delta link for {resource}")
 
     async def close(self) -> None:
         """
@@ -858,7 +862,7 @@ class AsyncDeltaQueryClient:
                 loop = asyncio.get_running_loop()
                 loop.create_task(self._internal_close())
             except RuntimeError:
-                logging.warning(
+                self.logger.warning(
                     "AsyncDeltaQueryClient destroyed without proper cleanup "
                     "(no running event loop)"
                 )

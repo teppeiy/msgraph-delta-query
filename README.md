@@ -220,3 +220,32 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 - Local file storage backend
 - Azure Identity integration
 - Async/await support
+
+## Logging and Logger Hierarchy
+
+This library uses Python's standard logging module with a hierarchical logger structure. You can control logging output for the entire library or for specific modules.
+
+### How to Control Logging
+
+```python
+import logging
+
+# Set up root logging (optional)
+logging.basicConfig(level=logging.INFO)
+
+# Control log level for the whole library
+logging.getLogger("msgraph_delta_query").setLevel(logging.INFO)
+
+# Control log level for a specific module
+logging.getLogger("msgraph_delta_query.client").setLevel(logging.DEBUG)
+logging.getLogger("msgraph_delta_query.storage.azure_blob").setLevel(logging.WARNING)
+```
+
+**Logger hierarchy examples:**
+- `msgraph_delta_query` (root package logger)
+  - `msgraph_delta_query.client`
+  - `msgraph_delta_query.storage.base`
+  - `msgraph_delta_query.storage.local_file`
+  - `msgraph_delta_query.storage.azure_blob`
+
+All logging calls in the library use these logger names, so you can easily filter or redirect output as needed.

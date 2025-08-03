@@ -14,6 +14,8 @@ from azure.storage.blob.aio import BlobServiceClient
 from azure.identity.aio import DefaultAzureCredential
 from azure.core.exceptions import ResourceNotFoundError
 
+logger = logging.getLogger(__name__)
+
 
 class AzureBlobDeltaLinkStorage(DeltaLinkStorage):
     """
@@ -90,7 +92,7 @@ class AzureBlobDeltaLinkStorage(DeltaLinkStorage):
         account_name = os.getenv("AZURE_STORAGE_ACCOUNT_NAME")
         if account_name:
             account_url = f"https://{account_name}.blob.core.windows.net"
-            logging.info(
+            logger.info(
                 f"Azure Blob Storage: Using managed identity with account '{account_name}' (production)"
             )
             return {
@@ -118,7 +120,7 @@ class AzureBlobDeltaLinkStorage(DeltaLinkStorage):
                 if os.getenv("AZURE_STORAGE_CONNECTION_STRING")
                 else "AzureWebJobsStorage"
             )
-            logging.info(
+            logger.info(
                 f"Azure Blob Storage: Using connection string from {env_var_name} "
                 f"(account: {account_info})"
             )
@@ -149,7 +151,7 @@ class AzureBlobDeltaLinkStorage(DeltaLinkStorage):
                         except (IndexError, AttributeError):
                             pass
 
-                    logging.info(
+                    logger.info(
                         f"Azure Blob Storage: Using connection string from "
                         f"{self._local_settings_path} (account: {account_info})"
                     )
@@ -160,12 +162,11 @@ class AzureBlobDeltaLinkStorage(DeltaLinkStorage):
                     }
         except Exception as e:
             # Log but don't fail - local.settings.json is optional
-            logging.debug(f"Could not read {self._local_settings_path}: {e}")
+            logger.debug(f"Could not read {self._local_settings_path}: {e}")
 
         # Priority 4: Default Azurite configuration (localhost fallback)
-        logging.info(
-            "Azure Blob Storage: Using Azurite emulator "
-            "(localhost:10000) - local development fallback"
+        logger.info(
+            "Azure Blob Storage: Using Azurite emulator (localhost:10000) - local development fallback"
         )
         azurite_connection = (
             "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;"
@@ -187,7 +188,7 @@ class AzureBlobDeltaLinkStorage(DeltaLinkStorage):
                 self._blob_service_client = BlobServiceClient.from_connection_string(
                     self._connection_string
                 )
-                logging.debug("Created BlobServiceClient from connection string")
+                logger.debug("Created BlobServiceClient from connection string")
             else:
                 # Use account URL with credential
                 if not self._account_url:
@@ -201,14 +202,14 @@ class AzureBlobDeltaLinkStorage(DeltaLinkStorage):
                     credential = DefaultAzureCredential()
                     self._credential = credential
                     self._credential_created = True
-                    logging.debug(
+                    logger.debug(
                         "Created DefaultAzureCredential for Azure Blob Storage"
                     )
 
                 self._blob_service_client = BlobServiceClient(
                     account_url=self._account_url, credential=credential
                 )
-                logging.debug(f"Created BlobServiceClient for {self._account_url}")
+                logger.debug(f"Created BlobServiceClient for {self._account_url}")
 
         assert self._blob_service_client is not None
         return self._blob_service_client
@@ -234,12 +235,12 @@ class AzureBlobDeltaLinkStorage(DeltaLinkStorage):
                 await container_client.get_container_properties()
             except ResourceNotFoundError:
                 await container_client.create_container()
-                logging.info(
+                logger.info(
                     f"Created container '{self.container_name}' in Azure Blob Storage"
                 )
 
         except Exception as e:
-            logging.error(f"Failed to ensure container exists: {e}")
+            logger.error(f"Failed to ensure container exists: {e}")
             raise
 
     async def get(self, resource: str) -> Optional[str]:
@@ -265,7 +266,7 @@ class AzureBlobDeltaLinkStorage(DeltaLinkStorage):
             # Blob doesn't exist - this is normal for first-time usage
             return None
         except Exception as e:
-            logging.warning(
+            logger.warning(
                 f"Failed to read delta link for {resource} from Azure Blob Storage: {e}"
             )
             return None
@@ -296,7 +297,7 @@ class AzureBlobDeltaLinkStorage(DeltaLinkStorage):
             # Blob doesn't exist - this is normal for first-time usage
             return None
         except Exception as e:
-            logging.warning(
+            logger.warning(
                 f"Failed to read metadata for {resource} from Azure Blob Storage: {e}"
             )
             return None
@@ -325,12 +326,10 @@ class AzureBlobDeltaLinkStorage(DeltaLinkStorage):
             content = json.dumps(data, indent=2).encode("utf-8")
             await blob_client.upload_blob(content, overwrite=True)
 
-            logging.debug(f"Saved delta link for {resource} to Azure Blob Storage")
+            logger.debug(f"Saved delta link for {resource} to Azure Blob Storage")
 
         except Exception as e:
-            logging.error(
-                f"Failed to save delta link for {resource} to Azure Blob Storage: {e}"
-            )
+            logger.error(f"Failed to save delta link for {resource} to Azure Blob Storage: {e}")
             raise
 
     async def delete(self, resource: str) -> None:
@@ -344,13 +343,13 @@ class AzureBlobDeltaLinkStorage(DeltaLinkStorage):
             )
 
             await blob_client.delete_blob()
-            logging.debug(f"Deleted delta link for {resource} from Azure Blob Storage")
+            logger.debug(f"Deleted delta link for {resource} from Azure Blob Storage")
 
         except ResourceNotFoundError:
             # Blob doesn't exist - this is fine
             pass
         except Exception as e:
-            logging.warning(
+            logger.warning(
                 f"Failed to delete delta link for {resource} from Azure Blob Storage: {e}"
             )
 
@@ -359,11 +358,13 @@ class AzureBlobDeltaLinkStorage(DeltaLinkStorage):
         if self._blob_service_client:
             await self._blob_service_client.close()
             self._blob_service_client = None
+            logger.debug("Closed BlobServiceClient")
 
         if self._credential and hasattr(self._credential, "close"):
             try:
                 await self._credential.close()
             except Exception as e:
-                logging.debug(f"Error closing credential: {e}")
+                logger.debug(f"Error closing credential: {e}")
             self._credential = None
             self._credential_created = False
+            logger.debug("Closed Azure credential")

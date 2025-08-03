@@ -2,9 +2,11 @@
 Local file-based delta link storage implementation.
 """
 
+
 import os
 import json
 import logging
+logger = logging.getLogger(__name__)
 import hashlib
 from pathlib import Path
 from typing import Optional, Dict
@@ -71,7 +73,7 @@ class LocalFileDeltaLinkStorage(DeltaLinkStorage):
                     delta_link = data.get("delta_link")
                     return delta_link if isinstance(delta_link, str) else None
             except Exception as e:
-                logging.warning(f"Failed to read delta link for {resource}: {e}")
+                logger.warning(f"Failed to read delta link for {resource}: {e}")
                 return None
         return None
 
@@ -88,7 +90,7 @@ class LocalFileDeltaLinkStorage(DeltaLinkStorage):
                         "resource": data.get("resource"),
                     }
             except Exception as e:
-                logging.warning(f"Failed to read metadata for {resource}: {e}")
+                logger.warning(f"Failed to read metadata for {resource}: {e}")
                 return None
         return None
 
@@ -107,7 +109,7 @@ class LocalFileDeltaLinkStorage(DeltaLinkStorage):
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
         except Exception as e:
-            logging.error(f"Failed to save delta link for {resource}: {e}")
+            logger.error(f"Failed to save delta link for {resource}: {e}")
             raise
 
     async def delete(self, resource: str) -> None:
@@ -117,4 +119,4 @@ class LocalFileDeltaLinkStorage(DeltaLinkStorage):
             if os.path.exists(path):
                 os.remove(path)
         except Exception as e:
-            logging.warning(f"Failed to delete delta link for {resource}: {e}")
+            logger.warning(f"Failed to delete delta link for {resource}: {e}")

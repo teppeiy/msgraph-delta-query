@@ -2,6 +2,8 @@
 Base abstract class for delta link storage implementations.
 """
 
+import logging
+logger = logging.getLogger(__name__)
 from typing import Optional, Dict
 
 
@@ -18,6 +20,7 @@ class DeltaLinkStorage:
         Returns:
             The delta link URL if found, None otherwise
         """
+        logger.debug("DeltaLinkStorage.get() not implemented")
         raise NotImplementedError
 
     async def get_metadata(self, resource: str) -> Optional[Dict]:
@@ -30,6 +33,7 @@ class DeltaLinkStorage:
         Returns:
             Dictionary containing metadata if found, None otherwise
         """
+        logger.debug("DeltaLinkStorage.get_metadata() not implemented")
         raise NotImplementedError
 
     async def set(
@@ -43,6 +47,7 @@ class DeltaLinkStorage:
             delta_link: The delta link URL to store
             metadata: Optional metadata to store with the delta link
         """
+        logger.debug("DeltaLinkStorage.set() not implemented")
         raise NotImplementedError
 
     async def delete(self, resource: str) -> None:
@@ -52,6 +57,7 @@ class DeltaLinkStorage:
         Args:
             resource: The resource identifier
         """
+        logger.debug("DeltaLinkStorage.delete() not implemented")
         raise NotImplementedError
 
     async def close(self) -> None:
@@ -59,4 +65,5 @@ class DeltaLinkStorage:
         Clean up any resources used by the storage implementation.
         Default implementation does nothing.
         """
+        logger.debug("DeltaLinkStorage.close() default implementation called")
         pass
