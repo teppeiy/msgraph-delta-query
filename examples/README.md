@@ -53,6 +53,39 @@ python examples/applications_localfile_sync.py
 python examples/serviceprincipals_localfile_sync.py
 ```
 
+### `delta_query_stream_example.py`
+
+**Purpose**: Real-time streaming of Microsoft Graph objects  
+**Best for**: Large datasets, real-time processing, memory-efficient operations  
+**What it does**: Demonstrates how to process objects as they arrive using `delta_query_stream`  
+**Features**: Shows multiple streaming patterns, progress tracking, and async context managers
+
+```bash
+python examples/delta_query_stream_example.py
+```
+
+### `simple_stream_example.py`
+
+**Purpose**: Basic streaming example with minimal code  
+**Best for**: Learning the streaming API, quick prototypes  
+**What it does**: Simple demonstration of `delta_query_stream` with users  
+**Features**: Clean, focused code showing the streaming basics
+
+```bash
+python examples/simple_stream_example.py
+```
+
+### `advanced_stream_with_casting.py`
+
+**Purpose**: Advanced streaming with proper Microsoft Graph SDK model casting  
+**Best for**: Production code, type safety, IDE support, maintainable applications  
+**What it does**: Shows how to properly cast Graph objects to SDK models for full type safety  
+**Features**: Type-safe property access, proper datetime handling, IDE autocomplete, casting helper functions
+
+```bash
+python examples/advanced_stream_with_casting.py
+```
+
 ### `sdk_objects_example.py`
 
 **Purpose**: Demonstrates how to use SDK objects with proper typing  
@@ -61,8 +94,6 @@ python examples/serviceprincipals_localfile_sync.py
 **Features**: Type hints, dot notation access, IDE autocomplete
 
 ```bash
-python examples/sdk_objects_example.py
-```
 python examples/sdk_objects_example.py
 ```
 

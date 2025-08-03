@@ -10,7 +10,7 @@ import logging
 import urllib.parse
 import asyncio
 import weakref
-from typing import Optional, Any, Dict, List, Tuple, AsyncGenerator, Union
+from typing import Optional, Any, Dict, List, Tuple, AsyncGenerator
 from azure.identity.aio import DefaultAzureCredential
 from datetime import datetime, timezone
 
@@ -171,20 +171,18 @@ class AsyncDeltaQueryClient:
         # Close Graph client if it exists
         if self._graph_client:
             logging.debug("Graph client exists, attempting to close HTTP client")
-            # Close the underlying httpx client to prevent unclosed session warnings
+            # The Microsoft Graph SDK manages its own HTTP client lifecycle
+            # We'll let the SDK handle cleanup automatically
             try:
-                if hasattr(self._graph_client, 'request_adapter') and hasattr(self._graph_client.request_adapter, '_http_client'):
-                    http_client = self._graph_client.request_adapter._http_client
-                    logging.debug(f"Found HTTP client: {type(http_client)}, is_closed: {http_client.is_closed}")
-                    if hasattr(http_client, 'aclose') and not http_client.is_closed:
-                        await http_client.aclose()
-                        logging.debug("Successfully closed httpx client in GraphRequestAdapter")
-                    else:
-                        logging.debug("HTTP client already closed or no aclose method")
+                # Try to access the request adapter to see if it exists
+                if hasattr(self._graph_client, 'request_adapter') and self._graph_client.request_adapter:
+                    logging.debug("Request adapter found - SDK will handle HTTP client cleanup")
+                    # Note: We don't directly access _http_client as it's a private attribute
+                    # The SDK will handle proper cleanup of the HTTP client internally
                 else:
-                    logging.debug("No HTTP client found in request adapter")
+                    logging.debug("No request adapter found")
             except Exception as e:
-                logging.warning(f"Error closing httpx client: {e}")
+                logging.warning(f"Error checking request adapter: {e}")
             
             # The SDK handles its own cleanup
             self._graph_client = None
@@ -481,7 +479,18 @@ class AsyncDeltaQueryClient:
                     # Create a request info object for the stored delta link URL
                     from kiota_abstractions.request_information import RequestInformation
                     from kiota_abstractions.method import Method
-                    from msgraph.generated.applications.delta.delta_get_response import DeltaGetResponse
+                    
+                    # Import the correct response type based on the resource
+                    if resource.lower() == "users":
+                        from msgraph.generated.users.delta.delta_get_response import DeltaGetResponse
+                    elif resource.lower() == "applications":
+                        from msgraph.generated.applications.delta.delta_get_response import DeltaGetResponse
+                    elif resource.lower() == "groups":
+                        from msgraph.generated.groups.delta.delta_get_response import DeltaGetResponse
+                    elif resource.lower() in ("serviceprincipals", "servicePrincipals"):
+                        from msgraph.generated.service_principals.delta.delta_get_response import DeltaGetResponse
+                    else:
+                        raise ValueError(f"Unsupported resource type for stored delta link: {resource}")
 
                     request_info = RequestInformation()
                     request_info.http_method = Method.GET
@@ -666,7 +675,18 @@ class AsyncDeltaQueryClient:
                 # Create a request info object for the next URL
                 from kiota_abstractions.request_information import RequestInformation
                 from kiota_abstractions.method import Method
-                from msgraph.generated.applications.delta.delta_get_response import DeltaGetResponse
+                
+                # Import the correct response type based on the resource
+                if resource.lower() == "users":
+                    from msgraph.generated.users.delta.delta_get_response import DeltaGetResponse
+                elif resource.lower() == "applications":
+                    from msgraph.generated.applications.delta.delta_get_response import DeltaGetResponse
+                elif resource.lower() == "groups":
+                    from msgraph.generated.groups.delta.delta_get_response import DeltaGetResponse
+                elif resource.lower() in ("serviceprincipals", "servicePrincipals"):
+                    from msgraph.generated.service_principals.delta.delta_get_response import DeltaGetResponse
+                else:
+                    raise ValueError(f"Unsupported resource type for pagination: {resource}")
 
                 request_info = RequestInformation()
                 request_info.http_method = Method.GET

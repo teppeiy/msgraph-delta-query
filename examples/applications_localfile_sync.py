@@ -111,7 +111,7 @@ async def main():
     # Load .env
     load_dotenv()
     # Set up minimal logging
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.WARNING)
 
     # Run the sync
     applications = await sync_applications()
