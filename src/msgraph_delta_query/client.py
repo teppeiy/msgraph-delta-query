@@ -165,13 +165,40 @@ class AsyncDeltaQueryClient:
         if self._closed:
             return
 
+        logging.debug("Starting _internal_close()")
         self._closed = True
 
         # Close Graph client if it exists
         if self._graph_client:
+            logging.debug("Graph client exists, attempting to close HTTP client")
+            # Close the underlying httpx client to prevent unclosed session warnings
+            try:
+                if hasattr(self._graph_client, 'request_adapter') and hasattr(self._graph_client.request_adapter, '_http_client'):
+                    http_client = self._graph_client.request_adapter._http_client
+                    logging.debug(f"Found HTTP client: {type(http_client)}, is_closed: {http_client.is_closed}")
+                    if hasattr(http_client, 'aclose') and not http_client.is_closed:
+                        await http_client.aclose()
+                        logging.debug("Successfully closed httpx client in GraphRequestAdapter")
+                    else:
+                        logging.debug("HTTP client already closed or no aclose method")
+                else:
+                    logging.debug("No HTTP client found in request adapter")
+            except Exception as e:
+                logging.warning(f"Error closing httpx client: {e}")
+            
             # The SDK handles its own cleanup
             self._graph_client = None
             logging.debug("Closed GraphServiceClient")
+        else:
+            logging.debug("No graph client to close")
+
+        # Close delta link storage
+        if self.delta_link_storage and hasattr(self.delta_link_storage, 'close'):
+            try:
+                await self.delta_link_storage.close()
+                logging.debug("Closed delta link storage")
+            except Exception as e:
+                logging.warning(f"Error closing delta link storage: {e}")
 
         # Close credential if we created it
         if self.credential and self._credential_created:
@@ -184,6 +211,7 @@ class AsyncDeltaQueryClient:
         self.credential = None
         self._credential_created = False
         self._initialized = False
+        logging.debug("Completed _internal_close()")
 
     def _get_delta_request_builder(self, resource: str) -> Any:
         """Get the appropriate delta request builder for the resource type."""
@@ -784,6 +812,24 @@ class AsyncDeltaQueryClient:
         """Reset/delete the stored delta link for a resource."""
         await self.delta_link_storage.delete(resource)
         logging.info(f"Reset delta link for {resource}")
+
+    async def close(self) -> None:
+        """
+        Close the client and clean up resources.
+        
+        This method should be called when you're done with the client to ensure
+        proper cleanup of HTTP connections and prevent resource warnings.
+        """
+        await self._internal_close()
+
+    async def __aenter__(self):
+        """Async context manager entry."""
+        await self._initialize()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit - ensures cleanup."""
+        await self.close()
 
     def __del__(self) -> None:
         """Destructor - schedule cleanup if not already closed."""
