@@ -22,9 +22,15 @@ except ImportError:
 # Import Graph SDK models for proper type casting
 from msgraph.generated.models.user import User
 
-# Set up basic logging - use WARNING level to suppress verbose storage messages
-logging.basicConfig(level=logging.WARNING)
+# Set up basic logging - use INFO level to show more detailed messages
+logging.basicConfig(level=logging.INFO)
 
+# Control log level for the whole library
+logging.getLogger("msgraph_delta_query").setLevel(logging.WARNING)
+
+# Control log level for a specific module
+# logging.getLogger("msgraph_delta_query.client").setLevel(logging.DEBUG)
+# logging.getLogger("msgraph_delta_query.storage.azure_blob").setLevel(logging.WARNING)
 
 async def simple_stream_example():
     """

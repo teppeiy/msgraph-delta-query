@@ -138,6 +138,15 @@ class AsyncDeltaQueryClient:
                 setattr(loop, "_delta_client_cleanup_added", True)
         except RuntimeError:
             pass
+        self._set_external_log_levels()
+
+    def _set_external_log_levels(self):
+        """
+        Set log levels for external libraries (azure.identity.aio, httpx) to match this module's effective logger level.
+        """
+        ext_level = self.logger.getEffectiveLevel()
+        logging.getLogger("azure.identity.aio").setLevel(ext_level)
+        logging.getLogger("httpx").setLevel(ext_level)
 
     async def _initialize(self) -> None:
         """Initialize the Graph client and authentication."""
