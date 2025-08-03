@@ -49,8 +49,9 @@ class TestClientComprehensiveCoverage:
         client = AsyncDeltaQueryClient(delta_link_storage=mock_storage)
         client._graph_client = MagicMock()  # Simulate active client
         
-        # Mock the logging to capture warning
-        with patch('msgraph_delta_query.client.logging') as mock_logging:
+        # Mock the logging to capture warning and asyncio.get_running_loop to raise RuntimeError
+        with patch('msgraph_delta_query.client.logging') as mock_logging, \
+             patch('msgraph_delta_query.client.asyncio.get_running_loop', side_effect=RuntimeError("No event loop")):
             # Manually call __del__ to test the warning
             client.__del__()
             
