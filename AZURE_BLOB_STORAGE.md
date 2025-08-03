@@ -166,7 +166,7 @@ async def sync_with_blob_storage():
     
     try:
         # Run delta query
-        users, delta_link, metadata = await client.delta_query_all(
+        users, delta_link, metadata = await client.delta_query(
             resource="users",
             select=["id", "displayName", "mail"]
         )
@@ -197,7 +197,7 @@ async def main(mytimer: func.TimerRequest) -> None:
     client = AsyncDeltaQueryClient(delta_link_storage=storage)
     
     try:
-        users, _, metadata = await client.delta_query_all(
+        users, _, metadata = await client.delta_query(
             resource="users",
             select=["id", "displayName", "mail"],
             top=1000

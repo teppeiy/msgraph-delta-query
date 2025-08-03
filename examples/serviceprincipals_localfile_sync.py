@@ -38,7 +38,7 @@ async def main():
 
     try:
         # Sync service principals with relevant fields - returns ServicePrincipal SDK objects
-        service_principals, delta_link, metadata = await client.delta_query_all(
+        service_principals, delta_link, metadata = await client.delta_query(
             resource="servicePrincipals",
             select=[
                 "id", 

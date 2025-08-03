@@ -25,7 +25,7 @@ async def example_users_with_sdk_objects():
     client = AsyncDeltaQueryClient()
     
     # Get users data (returns dict objects)
-    users_data, delta_link, metadata = await client.delta_query_all(
+    users_data, delta_link, metadata = await client.delta_query(
         resource="users",
         select=["id", "displayName", "mail", "userPrincipalName", "accountEnabled"],
         top=10
@@ -56,7 +56,7 @@ async def example_applications_with_sdk_objects():
     client = AsyncDeltaQueryClient()
     
     # Get applications data
-    apps_data, delta_link, metadata = await client.delta_query_all(
+    apps_data, delta_link, metadata = await client.delta_query(
         resource="applications",
         select=["id", "displayName", "appId", "publisherDomain", "createdDateTime"],
         top=10
@@ -86,7 +86,7 @@ async def example_service_principals_with_sdk_objects():
     client = AsyncDeltaQueryClient()
     
     # Get service principals data
-    sps_data, delta_link, metadata = await client.delta_query_all(
+    sps_data, delta_link, metadata = await client.delta_query(
         resource="servicePrincipals",
         select=["id", "displayName", "appId", "servicePrincipalType", "accountEnabled"],
         top=10
@@ -116,7 +116,7 @@ async def example_groups_with_sdk_objects():
     client = AsyncDeltaQueryClient()
     
     # Get groups data
-    groups_data, delta_link, metadata = await client.delta_query_all(
+    groups_data, delta_link, metadata = await client.delta_query(
         resource="groups",
         select=["id", "displayName", "mail", "groupTypes", "createdDateTime"],
         top=10
@@ -146,7 +146,7 @@ def show_type_information():
     print("For better IDE support and clean code, cast them to SDK objects:")
     print()
     print("Pattern:")
-    print("1. data, delta_link, metadata = await client.delta_query_all(...)")
+    print("1. data, delta_link, metadata = await client.delta_query(...)")
     print("2. objects = cast(List[SdkType], data)")
     print("3. Use dot notation: object.property_name")
     print()

@@ -34,7 +34,7 @@ async def sync_users():
         print("Syncing users...")
         
         # Get users with delta query - returns User SDK objects
-        users, delta_link, metadata = await client.delta_query_all(
+        users, delta_link, metadata = await client.delta_query(
             resource="users",
             select=[
                 "id", 

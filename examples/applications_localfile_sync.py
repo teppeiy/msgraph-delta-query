@@ -48,7 +48,7 @@ async def sync_applications():
         print("Syncing applications...")
         
         # Get applications with delta query - returns dict objects from Graph API
-        applications, delta_link, metadata = await client.delta_query_all(
+        applications, delta_link, metadata = await client.delta_query(
             resource="applications",
             select=[
                 "id", 

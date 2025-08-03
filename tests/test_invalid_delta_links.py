@@ -24,7 +24,7 @@ class TestInvalidDeltaLinkHandling:
         """Test that invalid delta token falls back to full sync when fallback is enabled."""
         invalid_delta_link = "https://graph.microsoft.com/v1.0/applications/delta?$deltatoken=invalid123token"
 
-        apps, delta_link_result, metadata = await self.client.delta_query_all(
+        apps, delta_link_result, metadata = await self.client.delta_query(
             resource="applications",
             select=["id", "displayName"],
             top=10,
@@ -43,7 +43,7 @@ class TestInvalidDeltaLinkHandling:
         """Test that invalid delta token fails when fallback is disabled."""
         invalid_delta_link = "https://graph.microsoft.com/v1.0/applications/delta?$deltatoken=invalid456token"
 
-        apps, delta_link_result, metadata = await self.client.delta_query_all(
+        apps, delta_link_result, metadata = await self.client.delta_query(
             resource="applications",
             select=["id", "displayName"],
             top=10,
@@ -62,7 +62,7 @@ class TestInvalidDeltaLinkHandling:
         """Test malformed delta token with fallback enabled."""
         malformed_delta_link = "https://graph.microsoft.com/v1.0/applications/delta?$deltatoken=malformed_token_123"
 
-        apps, delta_link_result, metadata = await self.client.delta_query_all(
+        apps, delta_link_result, metadata = await self.client.delta_query(
             resource="applications",
             select=["id", "displayName"],
             top=10,
@@ -79,7 +79,7 @@ class TestInvalidDeltaLinkHandling:
         """Test expired delta token with fallback enabled."""
         expired_delta_link = "https://graph.microsoft.com/v1.0/applications/delta?$deltatoken=expired_token_from_long_ago"
 
-        apps, delta_link_result, metadata = await self.client.delta_query_all(
+        apps, delta_link_result, metadata = await self.client.delta_query(
             resource="applications",
             select=["id", "displayName"],
             top=10,
@@ -96,7 +96,7 @@ class TestInvalidDeltaLinkHandling:
         """Test valid Graph URL without deltatoken parameter."""
         url_without_token = "https://graph.microsoft.com/v1.0/applications/delta"
 
-        apps, delta_link_result, metadata = await self.client.delta_query_all(
+        apps, delta_link_result, metadata = await self.client.delta_query(
             resource="applications",
             select=["id", "displayName"],
             top=10,
@@ -132,7 +132,7 @@ class TestInvalidDeltaLinkHandling:
             # Now create a client that should use this stored (invalid) delta link
             client = AsyncDeltaQueryClient(delta_link_storage=storage)
 
-            apps, delta_link_result, metadata = await client.delta_query_all(
+            apps, delta_link_result, metadata = await client.delta_query(
                 resource="applications",
                 select=["id", "displayName"],
                 top=10,
@@ -159,7 +159,7 @@ class TestInvalidDeltaLinkHandling:
         # This is a simple test to verify the default parameter value
         import inspect
 
-        sig = inspect.signature(AsyncDeltaQueryClient.delta_query_all)
+        sig = inspect.signature(AsyncDeltaQueryClient.delta_query)
         fallback_param = sig.parameters["fallback_to_full_sync"]
         assert fallback_param.default is True
 
@@ -182,7 +182,7 @@ class TestInvalidDeltaLinkHandling:
 
         try:
             # This should use the stored invalid delta link and fallback to full sync
-            apps, delta_link_result, metadata = await client.delta_query_all(
+            apps, delta_link_result, metadata = await client.delta_query(
                 resource="applications",
                 select=["id", "displayName"],
                 top=10,
@@ -226,7 +226,7 @@ class TestInvalidDeltaLinkHandling:
         try:
             # This should use the stored invalid delta link and fail when fallback is disabled
             with pytest.raises(Exception):  # Should raise an exception
-                apps, delta_link_result, metadata = await client.delta_query_all(
+                apps, delta_link_result, metadata = await client.delta_query(
                     resource="applications",
                     select=["id", "displayName"],
                     top=10,
@@ -309,7 +309,7 @@ class TestInvalidDeltaLinkHandling:
             client = AsyncDeltaQueryClient(delta_link_storage=storage)
 
             # This should detect the invalid stored delta link and fallback to full sync
-            apps, delta_link_result, metadata = await client.delta_query_all(
+            apps, delta_link_result, metadata = await client.delta_query(
                 resource="applications",
                 select=["id", "displayName"],
                 top=10,
@@ -396,7 +396,7 @@ async def test_manual_invalid_delta_scenarios():
             print(f"   Fallback enabled: {test_case['fallback']}")
 
             try:
-                apps, delta_link_result, metadata = await client.delta_query_all(
+                apps, delta_link_result, metadata = await client.delta_query(
                     resource="applications",
                     select=["id", "displayName"],
                     top=10,

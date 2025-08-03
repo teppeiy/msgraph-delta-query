@@ -60,7 +60,7 @@ async def test_graph_invalid_deltalink_behavior():
             test_client = AsyncDeltaQueryClient()
             
             try:
-                apps, new_delta_link, metadata = await test_client.delta_query_all(
+                apps, new_delta_link, metadata = await test_client.delta_query(
                     resource="applications",
                     select=["id", "displayName"],
                     top=5,  # Small number for testing
@@ -96,7 +96,7 @@ async def test_graph_invalid_deltalink_behavior():
             test_client = AsyncDeltaQueryClient()
             
             try:
-                apps, new_delta_link, metadata = await test_client.delta_query_all(
+                apps, new_delta_link, metadata = await test_client.delta_query(
                     resource="applications",
                     select=["id", "displayName"],
                     top=5,

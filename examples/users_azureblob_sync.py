@@ -35,7 +35,7 @@ async def sync_users():
         print("Syncing users...")
         
         # Get users with delta query - automatically handles full vs incremental sync
-        users_data, delta_link, metadata = await client.delta_query_all(
+        users_data, delta_link, metadata = await client.delta_query(
             resource="users",
             select=[
                 "id", 

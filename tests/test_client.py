@@ -213,8 +213,8 @@ class TestAsyncDeltaQueryClientSDK:
             assert objects[0]["id"] == "1"
             assert objects[0]["display_name"] == "User1"
 
-    async def test_delta_query_all_success(self, mock_credential, mock_storage):
-        """Test delta_query_all successful execution."""
+    async def test_delta_query_success(self, mock_credential, mock_storage):
+        """Test delta_query successful execution."""
         client = AsyncDeltaQueryClient(
             credential=mock_credential, delta_link_storage=mock_storage
         )
@@ -253,7 +253,7 @@ class TestAsyncDeltaQueryClientSDK:
             yield [{"id": "2"}], page2_meta
 
         with patch.object(client, "delta_query_stream", side_effect=mock_stream):
-            objects, delta_link, meta = await client.delta_query_all("users")
+            objects, delta_link, meta = await client.delta_query("users")
 
             assert len(objects) == 2
             assert objects[0]["id"] == "1"
@@ -265,8 +265,8 @@ class TestAsyncDeltaQueryClientSDK:
             assert hasattr(meta, "start_time")
             assert hasattr(meta, "end_time")
 
-    async def test_delta_query_all_with_max_objects(self, mock_credential, mock_storage):
-        """Test delta_query_all respects max_objects limit."""
+    async def test_delta_query_with_max_objects(self, mock_credential, mock_storage):
+        """Test delta_query respects max_objects limit."""
         client = AsyncDeltaQueryClient(
             credential=mock_credential, delta_link_storage=mock_storage
         )
@@ -289,7 +289,7 @@ class TestAsyncDeltaQueryClientSDK:
             yield [{"id": "3"}, {"id": "4"}], page2_meta
 
         with patch.object(client, "delta_query_stream", side_effect=mock_stream):
-            objects, delta_link, meta = await client.delta_query_all("users", max_objects=3)
+            objects, delta_link, meta = await client.delta_query("users", max_objects=3)
 
             assert len(objects) == 3  # Limited to 3 despite having 4 available
             assert objects[0]["id"] == "1"

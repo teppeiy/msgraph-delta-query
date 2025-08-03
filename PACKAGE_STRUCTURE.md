@@ -110,7 +110,7 @@ from msgraph_delta_query import AsyncDeltaQueryClient
 async def main():
     client = AsyncDeltaQueryClient()
     
-    users, delta_link, metadata = await client.delta_query_all(
+    users, delta_link, metadata = await client.delta_query(
         resource="users",
         select=["id", "displayName", "mail"],
         top=100

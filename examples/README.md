@@ -124,7 +124,7 @@ from typing import cast, List
 from msgraph.generated.models.user import User
 
 # Get data from the library
-users_data, delta_link, metadata = await client.delta_query_all("users", select=["id", "displayName"])
+users_data, delta_link, metadata = await client.delta_query("users", select=["id", "displayName"])
 
 # Cast to SDK objects for better IDE support
 users = cast(List[User], users_data)

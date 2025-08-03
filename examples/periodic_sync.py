@@ -145,7 +145,7 @@ class GraphSyncService:
             client = AsyncDeltaQueryClient()
         
         try:
-            objects_data, delta_link, metadata = await client.delta_query_all(
+            objects_data, delta_link, metadata = await client.delta_query(
                 resource=self.resource_type,
                 select=self.select_fields,
                 top=1000

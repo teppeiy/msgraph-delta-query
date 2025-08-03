@@ -54,7 +54,7 @@ async def test_improved_delta_handling():
         client = AsyncDeltaQueryClient()
         
         try:
-            apps, new_delta_link, metadata = await client.delta_query_all(
+            apps, new_delta_link, metadata = await client.delta_query(
                 resource="applications",
                 select=["id", "displayName"],
                 top=5,
@@ -91,7 +91,7 @@ async def test_improved_delta_handling():
             client = AsyncDeltaQueryClient()
             
             try:
-                apps, new_delta_link, metadata = await client.delta_query_all(
+                apps, new_delta_link, metadata = await client.delta_query(
                     resource="applications",
                     select=["id", "displayName"],
                     top=5,

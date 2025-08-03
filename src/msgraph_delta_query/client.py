@@ -658,52 +658,7 @@ class AsyncDeltaQueryClient:
                 logging.error(f"Error fetching next page: {e}")
                 break
 
-    async def delta_query_all_typed(
-        self,
-        resource: str,
-        select: Optional[List[str]] = None,
-        filter: Optional[str] = None,
-        delta_link: Optional[str] = None,
-        deltatoken_latest: bool = False,
-        top: Optional[int] = None,
-        max_objects: Optional[int] = None,
-        fallback_to_full_sync: bool = True,
-    ) -> Tuple[List[Any], Optional[str], DeltaQueryMetadata]:
-        """
-        Execute delta query and return strongly-typed SDK objects.
-
-        This method automatically returns the appropriate SDK object type based on the resource:
-        - "users" -> List[User]
-        - "applications" -> List[Application]
-        - "groups" -> List[Group]
-        - "serviceprincipals" -> List[ServicePrincipal]
-
-        Args:
-            resource: The resource type (e.g., "users", "applications")
-            select: List of properties to select
-            filter: OData filter expression
-            delta_link: Explicit delta link to use (overrides stored one)
-            deltatoken_latest: Use latest deltatoken for initial sync
-            top: Maximum items per page
-            max_objects: Maximum total objects to return
-            fallback_to_full_sync: If True, retry with full sync when delta link fails
-
-        Returns:
-            Tuple of (typed_objects_list, final_delta_link, metadata)
-        """
-        # All queries now return SDK objects by default
-        return await self.delta_query_all(
-            resource=resource,
-            select=select,
-            filter=filter,
-            delta_link=delta_link,
-            deltatoken_latest=deltatoken_latest,
-            top=top,
-            max_objects=max_objects,
-            fallback_to_full_sync=fallback_to_full_sync,
-        )
-
-    async def delta_query_all(
+    async def delta_query(
         self,
         resource: str,
         select: Optional[List[str]] = None,

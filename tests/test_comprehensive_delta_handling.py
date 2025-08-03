@@ -29,7 +29,7 @@ class TestComprehensiveDeltaHandling:
         client = AsyncDeltaQueryClient()
 
         try:
-            apps, new_delta_link, metadata = await client.delta_query_all(
+            apps, new_delta_link, metadata = await client.delta_query(
                 resource="applications",
                 select=["id", "displayName"],
                 top=5,
@@ -54,7 +54,7 @@ class TestComprehensiveDeltaHandling:
         client = AsyncDeltaQueryClient()
 
         try:
-            apps, new_delta_link, metadata = await client.delta_query_all(
+            apps, new_delta_link, metadata = await client.delta_query(
                 resource="applications",
                 select=["id", "displayName"],
                 top=5,
@@ -81,7 +81,7 @@ class TestComprehensiveDeltaHandling:
         client = AsyncDeltaQueryClient()
 
         try:
-            apps, new_delta_link, metadata = await client.delta_query_all(
+            apps, new_delta_link, metadata = await client.delta_query(
                 resource="applications",
                 select=["id", "displayName"],
                 top=5,
@@ -108,7 +108,7 @@ class TestComprehensiveDeltaHandling:
         client = AsyncDeltaQueryClient()
 
         try:
-            apps, new_delta_link, metadata = await client.delta_query_all(
+            apps, new_delta_link, metadata = await client.delta_query(
                 resource="applications",
                 select=["id", "displayName"],
                 top=5,
@@ -151,7 +151,7 @@ class TestComprehensiveDeltaHandling:
             client = AsyncDeltaQueryClient()
 
             try:
-                apps, new_delta_link, metadata = await client.delta_query_all(
+                apps, new_delta_link, metadata = await client.delta_query(
                     resource="applications",
                     select=["id", "displayName"],
                     top=3,  # Small number for faster testing
@@ -176,8 +176,8 @@ class TestComprehensiveDeltaHandling:
         """Test that the fallback_to_full_sync parameter exists and has correct default."""
         import inspect
 
-        # Check delta_query_all method
-        sig = inspect.signature(AsyncDeltaQueryClient.delta_query_all)
+        # Check delta_query method
+        sig = inspect.signature(AsyncDeltaQueryClient.delta_query)
         assert "fallback_to_full_sync" in sig.parameters
         fallback_param = sig.parameters["fallback_to_full_sync"]
         assert fallback_param.default is True
@@ -206,7 +206,7 @@ class TestComprehensiveDeltaHandling:
         client = AsyncDeltaQueryClient()
 
         try:
-            apps, new_delta_link, metadata = await client.delta_query_all(
+            apps, new_delta_link, metadata = await client.delta_query(
                 resource="applications",
                 select=["id", "displayName"],
                 top=5,
@@ -279,7 +279,7 @@ async def manual_test_improved_delta_handling():
         client = AsyncDeltaQueryClient()
 
         try:
-            apps, new_delta_link, metadata = await client.delta_query_all(
+            apps, new_delta_link, metadata = await client.delta_query(
                 resource="applications",
                 select=["id", "displayName"],
                 top=3,

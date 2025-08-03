@@ -28,7 +28,7 @@ async def main():
     client = AsyncDeltaQueryClient()
     
     # Query users with delta support
-    users, delta_link, metadata = await client.delta_query_all(
+    users, delta_link, metadata = await client.delta_query(
         resource="users",
         select=["id", "displayName", "mail"],
         top=100
@@ -111,7 +111,7 @@ The main client class for performing delta queries against Microsoft Graph API.
 
 #### Methods
 
-##### `delta_query_all(resource, **params)`
+##### `delta_query(resource, **params)`
 
 Performs a complete delta query and returns all results.
 

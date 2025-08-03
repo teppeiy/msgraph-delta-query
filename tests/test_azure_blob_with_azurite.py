@@ -185,21 +185,19 @@ class TestAzureBlobStorageWithMocking:
         with patch.object(storage, '_ensure_container_exists', new_callable=AsyncMock) as mock_ensure_container, \
              patch.object(storage, '_get_blob_service_client', new_callable=AsyncMock) as mock_get_client:
             
-            # Setup mock clients properly - sync methods are Mock, async methods are AsyncMock
-            mock_blob_client = AsyncMock()
-            mock_container_client = MagicMock()  # sync methods
-            mock_service_client = MagicMock()    # sync methods
-
-            # Configure ALL async blob client methods as AsyncMock
-            mock_blob_client = AsyncMock()
+            # Setup mock clients properly - following the pattern from simple_mocking test
+            mock_service_client = MagicMock()    # sync method
+            mock_blob_client = MagicMock()       # sync method but with async operations
+            
+            # Configure the blob client's async methods as AsyncMock
             mock_blob_client.upload_blob = AsyncMock()
             mock_blob_client.download_blob = AsyncMock()
             mock_blob_client.delete_blob = AsyncMock()
             
             # Make the async method return the mock service client
             mock_get_client.return_value = mock_service_client
-            mock_service_client.get_container_client.return_value = mock_container_client
-            mock_container_client.get_blob_client.return_value = mock_blob_client
+            # The service client's get_blob_client method returns the blob client directly
+            mock_service_client.get_blob_client.return_value = mock_blob_client
             
             # Configure download mock to return proper data
             mock_download = AsyncMock()
@@ -255,20 +253,19 @@ class TestAzureBlobStorageWithMocking:
         with patch.object(storage, '_ensure_container_exists', new_callable=AsyncMock) as mock_ensure_container, \
              patch.object(storage, '_get_blob_service_client', new_callable=AsyncMock) as mock_get_client:
             
-            # Setup mock clients properly - sync methods are Mock, async methods are AsyncMock
-            mock_blob_client = AsyncMock()
-            mock_container_client = MagicMock()  # sync methods
-            mock_service_client = MagicMock()    # sync methods
+            # Setup mock clients properly - following the pattern from simple_mocking test
+            mock_service_client = MagicMock()    # sync method
+            mock_blob_client = MagicMock()       # sync method but with async operations
             
-            # Configure async upload/download methods
+            # Configure the blob client's async methods as AsyncMock
             mock_blob_client.upload_blob = AsyncMock()
             mock_blob_client.download_blob = AsyncMock()
             mock_blob_client.delete_blob = AsyncMock()
             
             # Make the async method return the mock service client
             mock_get_client.return_value = mock_service_client
-            mock_service_client.get_container_client.return_value = mock_container_client
-            mock_container_client.get_blob_client.return_value = mock_blob_client
+            # The service client's get_blob_client method returns the blob client directly
+            mock_service_client.get_blob_client.return_value = mock_blob_client
             
             # Test 1: Blob not found (should return None gracefully)
             mock_blob_client.download_blob.side_effect = ResourceNotFoundError("Blob not found")
@@ -477,7 +474,7 @@ def demonstrate_azurite_workflow():
         )
         
         # 3. Delta links persist in local Azurite
-        users, delta_link, metadata = await client.delta_query_all(
+        users, delta_link, metadata = await client.delta_query(
             resource="users",
             select=["id", "displayName", "mail"]
         )
