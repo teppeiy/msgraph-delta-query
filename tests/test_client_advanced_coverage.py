@@ -2,11 +2,6 @@
 
 import pytest
 from unittest.mock import AsyncMock, Mock, patch
-import asyncio
-import json
-import logging
-import urllib.parse
-from datetime import datetime, timezone
 
 from msgraph_delta_query.client import AsyncDeltaQueryClient
 from msgraph_delta_query.storage import DeltaLinkStorage

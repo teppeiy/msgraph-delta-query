@@ -3,15 +3,13 @@
 import pytest
 import asyncio
 import warnings
-import logging
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
+from unittest.mock import Mock, AsyncMock, patch
 from contextlib import contextmanager
 from typing import List
 
 from msgraph_delta_query.client import AsyncDeltaQueryClient
 from msgraph_delta_query.storage import (
-    LocalFileDeltaLinkStorage,
-    AzureBlobDeltaLinkStorage,
+    LocalFileDeltaLinkStorage
 )
 
 

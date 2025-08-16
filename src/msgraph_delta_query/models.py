@@ -180,9 +180,9 @@ class DeltaQueryMetadata:
 
         # Print storage info
         if self.used_stored_deltalink:
-            print(f"💾 Delta link used for incremental sync")
+            print("💾 Delta link used for incremental sync")
         else:
-            print(f"💾 Delta link saved for future incremental syncs")
+            print("💾 Delta link saved for future incremental syncs")
 
     def print_compact_results(self, resource_name: str = "Objects") -> None:
         """Print a compact one-line summary of sync results."""

@@ -1,12 +1,7 @@
 """Extended test coverage for client implementations."""
 
 import pytest
-import asyncio
-import json
-import logging
-import urllib.parse
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
-from datetime import datetime, timezone
+from unittest.mock import Mock, AsyncMock, patch
 
 from msgraph_delta_query.client import (
     AsyncDeltaQueryClient,
@@ -354,7 +349,6 @@ class TestAsyncDeltaQueryClientExtendedCoverage:
     async def test_signal_handler_setup_with_running_loop(self):
         """Test signal handler setup when running loop exists."""
         # This tests the signal handler setup in __init__
-        import signal
 
         with patch("asyncio.get_running_loop") as mock_get_loop:
             mock_loop = Mock()

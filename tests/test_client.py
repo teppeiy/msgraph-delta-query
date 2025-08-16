@@ -1,11 +1,7 @@
 """Test client implementations for SDK-based architecture."""
 
 import pytest
-import asyncio
-import json
-import logging
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
-from datetime import datetime, timezone
+from unittest.mock import Mock, AsyncMock, patch
 
 from msgraph_delta_query.client import (
     AsyncDeltaQueryClient,

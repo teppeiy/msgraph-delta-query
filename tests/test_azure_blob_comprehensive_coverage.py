@@ -7,7 +7,7 @@ import json
 import os
 import tempfile
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, mock_open
+from unittest.mock import AsyncMock, MagicMock, patch
 from azure.core.exceptions import ResourceNotFoundError, ServiceRequestError
 from azure.identity.aio import DefaultAzureCredential
 

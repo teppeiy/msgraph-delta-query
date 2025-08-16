@@ -20,8 +20,6 @@ For printing methods:
 
 import pytest
 from datetime import datetime, timezone, timedelta
-from io import StringIO
-import sys
 from msgraph_delta_query.models import (
     ChangeSummary,
     ResourceParams,

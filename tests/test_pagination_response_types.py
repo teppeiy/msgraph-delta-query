@@ -7,9 +7,7 @@ DeltaGetResponse type was being used for different resource types.
 """
 
 import pytest
-import asyncio
-from unittest.mock import Mock, patch, AsyncMock
-from typing import Any, Dict
+from unittest.mock import Mock, AsyncMock
 
 from msgraph_delta_query import AsyncDeltaQueryClient
 from msgraph_delta_query.storage import LocalFileDeltaLinkStorage
@@ -46,9 +44,9 @@ class TestPaginationResponseTypes:
         for i in range(user_count):
             user = Mock()
             user.odata_type = "#microsoft.graph.user"
-            user.display_name = f"User {i+1}"
-            user.user_principal_name = f"user{i+1}@example.com"
-            user.id = f"user-{i+1}-id"
+            user.display_name = f"User {i + 1}"
+            user.user_principal_name = f"user{i + 1}@example.com"
+            user.id = f"user-{i + 1}-id"
             user.additional_data = {}
             # Don't add app_id to user objects
             mock_users.append(user)
@@ -78,9 +76,9 @@ class TestPaginationResponseTypes:
         for i in range(app_count):
             app = Mock()
             app.odata_type = "#microsoft.graph.application"
-            app.display_name = f"App {i+1}"
-            app.app_id = f"app-{i+1}-id"
-            app.id = f"application-{i+1}-id"
+            app.display_name = f"App {i + 1}"
+            app.app_id = f"app-{i + 1}-id"
+            app.id = f"application-{i + 1}-id"
             app.additional_data = {}
             # Don't add user_principal_name to app objects
             mock_apps.append(app)

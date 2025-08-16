@@ -3,9 +3,9 @@ Base abstract class for delta link storage implementations.
 """
 
 import logging
-logger = logging.getLogger(__name__)
 from typing import Optional, Dict
 
+logger = logging.getLogger(__name__)
 
 class DeltaLinkStorage:
     """Abstract base class for delta link storage."""

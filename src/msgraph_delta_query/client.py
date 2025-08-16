@@ -371,8 +371,7 @@ class AsyncDeltaQueryClient:
             )
 
             # Try fallback if it's a delta error and we have fallback enabled
-            if (is_delta_error and fallback_to_full_sync and
-                    "deltatoken" in query_params and used_stored_deltalink):
+            if (is_delta_error and fallback_to_full_sync and "deltatoken" in query_params and used_stored_deltalink):
 
                 self.logger.warning(
                     f"Delta token failed ({e}), falling back to full sync for "
@@ -393,8 +392,7 @@ class AsyncDeltaQueryClient:
 
                     fallback_query_params_obj = QueryParamsClass()
                     for key, value in fallback_params.items():
-                        if (hasattr(fallback_query_params_obj, key) and 
-                                value is not None):
+                        if (hasattr(fallback_query_params_obj, key) and value is not None):
                             setattr(fallback_query_params_obj, key, value)
 
                     fallback_config = RequestConfigClass(

@@ -8,10 +8,7 @@ DeltaGetResponse type usage in pagination.
 """
 
 import pytest
-import asyncio
-from unittest.mock import Mock, patch, AsyncMock, MagicMock
-from kiota_abstractions.request_information import RequestInformation
-from kiota_abstractions.method import Method
+from unittest.mock import Mock, AsyncMock
 
 from msgraph_delta_query import AsyncDeltaQueryClient
 from msgraph_delta_query.storage import LocalFileDeltaLinkStorage

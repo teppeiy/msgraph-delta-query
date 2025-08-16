@@ -269,7 +269,6 @@ class TestInvalidDeltaLinkHandling:
         from msgraph_delta_query.storage import LocalFileDeltaLinkStorage
         import json
         import os
-        from datetime import datetime, timezone
 
         # Create a temporary deltalinks directory and file to simulate the real scenario
         deltalinks_dir = "test_deltalinks"
@@ -412,7 +411,7 @@ async def test_manual_invalid_delta_scenarios():
                         f"   📅 Incremental sync (since: {metadata.change_summary.timestamp})"
                     )
                 else:
-                    print(f"   📅 Full sync")
+                    print("   📅 Full sync")
 
             except Exception as e:
                 print(f"   ❌ Error: {type(e).__name__}: {e}")

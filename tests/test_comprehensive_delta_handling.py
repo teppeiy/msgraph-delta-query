@@ -141,8 +141,7 @@ class TestComprehensiveDeltaHandling:
             },
             {
                 "name": "very_long_invalid_token",
-                "delta_link": "https://graph.microsoft.com/v1.0/applications/delta?$deltatoken="
-                + "x" * 1000,
+                "delta_link": "https://graph.microsoft.com/v1.0/applications/delta?$deltatoken=" + "x" * 1000,
                 "expected_fallback": True,
             },
         ]

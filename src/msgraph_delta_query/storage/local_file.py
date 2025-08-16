@@ -1,5 +1,3 @@
-import logging
-logger = logging.getLogger(__name__)
 """
 Local file-based delta link storage implementation.
 """
@@ -14,6 +12,7 @@ from datetime import datetime, timezone
 
 from .base import DeltaLinkStorage
 
+logger = logging.getLogger(__name__)
 
 class LocalFileDeltaLinkStorage(DeltaLinkStorage):
     """Stores delta links in a local JSON file per resource with metadata."""

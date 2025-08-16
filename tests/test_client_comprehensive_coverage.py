@@ -49,7 +49,7 @@ class TestClientComprehensiveCoverage:
         client._graph_client = MagicMock()  # Simulate active client
 
         # Mock the logging to capture warning and asyncio.get_running_loop to raise RuntimeError
-        with patch("msgraph_delta_query.client.logging") as mock_logging, patch(
+        with patch("msgraph_delta_query.client.logger") as mock_logging, patch(
             "msgraph_delta_query.client.asyncio.get_running_loop",
             side_effect=RuntimeError("No event loop"),
         ):
@@ -80,7 +80,7 @@ class TestClientComprehensiveCoverage:
         mock_storage._account_url = "https://testaccount.blob.core.windows.net"
         mock_storage._connection_string = None
 
-        with patch("msgraph_delta_query.client.logging") as mock_logging:
+        with patch("msgraph_delta_query.client.logger") as mock_logging:
             client = AsyncDeltaQueryClient(delta_link_storage=mock_storage)
 
             # Should log storage info with account name
@@ -101,7 +101,7 @@ class TestClientComprehensiveCoverage:
             "DefaultEndpointsProtocol=https;AccountName=testconn;AccountKey=key123"
         )
 
-        with patch("msgraph_delta_query.client.logging") as mock_logging:
+        with patch("msgraph_delta_query.client.logger") as mock_logging:
             client = AsyncDeltaQueryClient(delta_link_storage=mock_storage)
 
             # Should log storage info with account name from connection string
@@ -118,7 +118,7 @@ class TestClientComprehensiveCoverage:
         mock_storage = MagicMock(spec=LocalFileDeltaLinkStorage)
         mock_storage.deltalinks_dir = "custom-deltalinks"
 
-        with patch("msgraph_delta_query.client.logging") as mock_logging:
+        with patch("msgraph_delta_query.client.logger") as mock_logging:
             client = AsyncDeltaQueryClient(delta_link_storage=mock_storage)
 
             # Should log storage info with directory
@@ -162,7 +162,7 @@ class TestClientComprehensiveCoverage:
         mock_storage._account_url = "malformed_url_without_proper_format"
         mock_storage._connection_string = None
 
-        with patch("msgraph_delta_query.client.logging") as mock_logging:
+        with patch("msgraph_delta_query.client.logger") as mock_logging:
             client = AsyncDeltaQueryClient(delta_link_storage=mock_storage)
 
             # Should handle malformed URL gracefully
@@ -260,5 +260,5 @@ class TestClientComprehensiveCoverage:
             select=["id", "displayName"], filter="startswith(displayName,'Test')"
         )
 
-        assert hasattr(params, "select")
-        assert hasattr(params, "filter")
+        assert "select" in params
+        assert "filter" in params
