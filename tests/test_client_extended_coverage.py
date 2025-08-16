@@ -231,7 +231,7 @@ class TestAsyncDeltaQueryClientExtendedCoverage:
             "msgraph_delta_query.client.urllib.parse.urlparse",
             side_effect=Exception("Parse error"),
         ):
-            with patch("msgraph_delta_query.client.logging.warning") as mock_warning:
+            with patch("msgraph_delta_query.client.logger.warning") as mock_warning:
                 malformed_url = "not-a-valid-url://malformed"
                 token = await client._extract_delta_token_from_link(malformed_url)
                 assert token is None
@@ -283,7 +283,7 @@ class TestAsyncDeltaQueryClientExtendedCoverage:
             "msgraph_delta_query.client.urllib.parse.urlparse",
             side_effect=Exception("Parse error"),
         ):
-            with patch("msgraph_delta_query.client.logging.warning") as mock_warning:
+            with patch("msgraph_delta_query.client.logger.warning") as mock_warning:
                 malformed_url = "not-a-valid-url://malformed"
                 token = client._extract_skiptoken_from_url(malformed_url)
                 assert token is None
@@ -292,7 +292,7 @@ class TestAsyncDeltaQueryClientExtendedCoverage:
 
     async def test_initialization_with_azure_blob_storage_info_logging(self):
         """Test initialization logging with Azure Blob Storage."""
-        with patch("msgraph_delta_query.client.logging") as mock_logging:
+        with patch("msgraph_delta_query.client.logger.info") as mock_info:
             # Mock Azure Blob Storage
             mock_storage = Mock()
             mock_storage.__class__.__name__ = "AzureBlobDeltaLinkStorage"
@@ -303,8 +303,8 @@ class TestAsyncDeltaQueryClientExtendedCoverage:
             client = AsyncDeltaQueryClient(delta_link_storage=mock_storage)
 
             # Should log storage info with account name extracted from URL
-            mock_logging.info.assert_called()
-            call_args = mock_logging.info.call_args[0][0]
+            mock_info.assert_called()
+            call_args = mock_info.call_args[0][0]
             assert "AzureBlobDeltaLinkStorage" in call_args
             assert "testaccount" in call_args
             assert "test-container" in call_args
@@ -313,7 +313,7 @@ class TestAsyncDeltaQueryClientExtendedCoverage:
         self,
     ):
         """Test initialization logging with Azure Blob Storage using connection string."""
-        with patch("msgraph_delta_query.client.logging") as mock_logging:
+        with patch("msgraph_delta_query.client.logger.info") as mock_info:
             # Mock Azure Blob Storage with connection string
             mock_storage = Mock()
             mock_storage.__class__.__name__ = "AzureBlobDeltaLinkStorage"
@@ -324,15 +324,15 @@ class TestAsyncDeltaQueryClientExtendedCoverage:
             client = AsyncDeltaQueryClient(delta_link_storage=mock_storage)
 
             # Should log storage info with account name extracted from connection string
-            mock_logging.info.assert_called()
-            call_args = mock_logging.info.call_args[0][0]
+            mock_info.assert_called()
+            call_args = mock_info.call_args[0][0]
             assert "AzureBlobDeltaLinkStorage" in call_args
             assert "testaccount" in call_args
             assert "test-container" in call_args
 
     async def test_initialization_with_local_file_storage_logging(self):
         """Test initialization logging with Local File Storage."""
-        with patch("msgraph_delta_query.client.logging") as mock_logging:
+        with patch("msgraph_delta_query.client.logger.info") as mock_info:
             # Mock Local File Storage
             mock_storage = Mock()
             mock_storage.__class__.__name__ = "LocalFileDeltaLinkStorage"
@@ -341,8 +341,8 @@ class TestAsyncDeltaQueryClientExtendedCoverage:
             client = AsyncDeltaQueryClient(delta_link_storage=mock_storage)
 
             # Should log storage info with directory
-            mock_logging.info.assert_called()
-            call_args = mock_logging.info.call_args[0][0]
+            mock_info.assert_called()
+            call_args = mock_info.call_args[0][0]
             assert "LocalFileDeltaLinkStorage" in call_args
             assert "custom_deltalinks" in call_args
 
@@ -381,7 +381,7 @@ class TestAsyncDeltaQueryClientExtendedCoverage:
         with patch(
             "asyncio.get_running_loop", side_effect=RuntimeError("No running loop")
         ):
-            with patch("msgraph_delta_query.client.logging.warning") as mock_warning:
+            with patch("msgraph_delta_query.client.logger.warning") as mock_warning:
                 # Call destructor directly
                 client.__del__()
 
@@ -452,7 +452,7 @@ class TestAsyncDeltaQueryClientExtendedCoverage:
         client = AsyncDeltaQueryClient()
         client._internal_close = AsyncMock(side_effect=Exception("Cleanup error"))
 
-        with patch("logging.warning") as mock_warning:
+        with patch("msgraph_delta_query.client.logger.warning") as mock_warning:
             # Should not raise exception
             await _cleanup_all_clients()
 

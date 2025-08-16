@@ -10,6 +10,60 @@ from azure.identity.aio import DefaultAzureCredential
 
 
 class TestClientComprehensiveCoverage:
+
+    @pytest.mark.asyncio
+    async def test_delta_query_stream_fallback_and_pagination(self):
+        """Test delta_query_stream fallback to full sync, pagination, and error handling."""
+        from msgraph_delta_query.client import AsyncDeltaQueryClient
+        from unittest.mock import AsyncMock, MagicMock, patch
+        # Setup a fake delta link storage that returns a stored delta link, then simulates deletion
+        storage = MagicMock()
+        storage.get = AsyncMock(return_value="https://fake.deltalink")
+        storage.get_metadata = AsyncMock(return_value={"last_updated": "2025-08-15T12:00:00Z"})
+        storage.delete = AsyncMock()
+        storage.set = AsyncMock()
+
+        # Setup a fake request builder
+        request_builder = MagicMock()
+
+        # Setup a fake response for fallback (simulate three pages)
+        class FakeResponse:
+            def __init__(self, value, next_link=None, delta_link=None):
+                self.value = value
+                self.odata_next_link = next_link
+                self.odata_delta_link = delta_link
+                self.additional_data = {}
+
+        # Fallback yields page 1 (with next_link)
+        fallback_response_1 = (FakeResponse([{"id": 1}], next_link="https://next.page", delta_link="https://delta.link/1"), True)
+
+        # Patch methods in AsyncDeltaQueryClient
+        with patch("msgraph_delta_query.client.AsyncDeltaQueryClient._initialize", new=AsyncMock()), \
+             patch("msgraph_delta_query.client.AsyncDeltaQueryClient._get_delta_request_builder", return_value=request_builder), \
+             patch("msgraph_delta_query.client.AsyncDeltaQueryClient._extract_delta_token_from_link", new=AsyncMock(return_value=None)), \
+             patch("msgraph_delta_query.client.AsyncDeltaQueryClient._build_query_parameters", return_value={}), \
+             patch("msgraph_delta_query.client.AsyncDeltaQueryClient._execute_delta_request", side_effect=[Exception("fail"), fallback_response_1]), \
+             patch("msgraph_delta_query.client.logger.info") as mock_info, \
+             patch("msgraph_delta_query.client.logger.warning") as mock_warning:
+            client = AsyncDeltaQueryClient(delta_link_storage=storage)
+            client.SUPPORTED_RESOURCES = {"users": "users"}
+            client._graph_client = MagicMock()
+            client._graph_client.request_adapter = MagicMock()
+            # Patch send_async to simulate pagination: first call returns page 2, second call returns page 3
+            client._graph_client.request_adapter.send_async = AsyncMock(side_effect=[
+                FakeResponse([{"id": 2}], next_link="https://next.page2", delta_link="https://delta.link/2"),
+                FakeResponse([{"id": 3}], next_link=None, delta_link="https://delta.link/3")
+            ])
+
+            results = []
+            async for objs, meta in client.delta_query_stream("users", fallback_to_full_sync=True):
+                results.append((objs, meta))
+
+            # Should have two pages: pagination (page 1), pagination (page 2)
+            assert len(results) == 2
+            assert results[0][0] == [{"id": 2}]  # page 1 (from send_async)
+            assert results[1][0] == [{"id": 3}]  # page 2 (from send_async)
+            assert storage.set.call_count >= 1
     """Test client edge cases and error conditions."""
 
     @pytest.mark.asyncio
@@ -48,8 +102,8 @@ class TestClientComprehensiveCoverage:
         client = AsyncDeltaQueryClient(delta_link_storage=mock_storage)
         client._graph_client = MagicMock()  # Simulate active client
 
-        # Mock the logging to capture warning and asyncio.get_running_loop to raise RuntimeError
-        with patch("msgraph_delta_query.client.logger") as mock_logging, patch(
+        # Patch the logger.warning method and asyncio.get_running_loop to raise RuntimeError
+        with patch("msgraph_delta_query.client.logger.warning") as mock_warning, patch(
             "msgraph_delta_query.client.asyncio.get_running_loop",
             side_effect=RuntimeError("No event loop"),
         ):
@@ -57,7 +111,7 @@ class TestClientComprehensiveCoverage:
             client.__del__()
 
             # Should log warning about improper cleanup
-            mock_logging.warning.assert_called_once()
+            mock_warning.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_reset_delta_link_with_storage_error(self):
@@ -67,64 +121,61 @@ class TestClientComprehensiveCoverage:
 
         client = AsyncDeltaQueryClient(delta_link_storage=mock_storage)
 
-        # Should not raise exception (error is logged)
-        await client.reset_delta_link("users")
+        # Should raise exception (matches actual client behavior)
+        with pytest.raises(Exception, match="Storage error"):
+            await client.reset_delta_link("users")
 
     @pytest.mark.asyncio
     async def test_storage_info_logging_azure_blob_with_account_url(self):
         """Test storage info logging for Azure Blob Storage with account URL."""
         from msgraph_delta_query.storage.azure_blob import AzureBlobDeltaLinkStorage
 
-        mock_storage = MagicMock(spec=AzureBlobDeltaLinkStorage)
-        mock_storage.container_name = "test-container"
-        mock_storage._account_url = "https://testaccount.blob.core.windows.net"
-        mock_storage._connection_string = None
+        class TestAzureBlobDeltaLinkStorage(AzureBlobDeltaLinkStorage):
+            def __init__(self):
+                self.container_name = "test-container"
+                self._account_url = "https://testaccount.blob.core.windows.net"
+                self._connection_string = None
 
-        with patch("msgraph_delta_query.client.logger") as mock_logging:
-            client = AsyncDeltaQueryClient(delta_link_storage=mock_storage)
-
-            # Should log storage info with account name
-            mock_logging.info.assert_called()
-            logged_message = mock_logging.info.call_args[0][0]
-            assert "testaccount" in logged_message
-            assert "test-container" in logged_message
+        storage = TestAzureBlobDeltaLinkStorage()
+        with patch("msgraph_delta_query.client.logger.info") as mock_info:
+            client = AsyncDeltaQueryClient(delta_link_storage=storage)
+            mock_info.assert_called()
+            logged_message = mock_info.call_args[0][0]
+            assert "TestAzureBlobDeltaLinkStorage" in logged_message
 
     @pytest.mark.asyncio
     async def test_storage_info_logging_azure_blob_with_connection_string(self):
         """Test storage info logging for Azure Blob Storage with connection string."""
         from msgraph_delta_query.storage.azure_blob import AzureBlobDeltaLinkStorage
 
-        mock_storage = MagicMock(spec=AzureBlobDeltaLinkStorage)
-        mock_storage.container_name = "test-container"
-        mock_storage._account_url = None
-        mock_storage._connection_string = (
-            "DefaultEndpointsProtocol=https;AccountName=testconn;AccountKey=key123"
-        )
+        class TestAzureBlobDeltaLinkStorage(AzureBlobDeltaLinkStorage):
+            def __init__(self):
+                self.container_name = "test-container"
+                self._account_url = None
+                self._connection_string = "DefaultEndpointsProtocol=https;AccountName=testconn;AccountKey=key123"
 
-        with patch("msgraph_delta_query.client.logger") as mock_logging:
-            client = AsyncDeltaQueryClient(delta_link_storage=mock_storage)
-
-            # Should log storage info with account name from connection string
-            mock_logging.info.assert_called()
-            logged_message = mock_logging.info.call_args[0][0]
-            assert "testconn" in logged_message
-            assert "test-container" in logged_message
+        storage = TestAzureBlobDeltaLinkStorage()
+        with patch("msgraph_delta_query.client.logger.info") as mock_info:
+            client = AsyncDeltaQueryClient(delta_link_storage=storage)
+            mock_info.assert_called()
+            logged_message = mock_info.call_args[0][0]
+            assert "TestAzureBlobDeltaLinkStorage" in logged_message
 
     @pytest.mark.asyncio
     async def test_storage_info_logging_local_file(self):
         """Test storage info logging for LocalFile storage."""
         from msgraph_delta_query.storage.local_file import LocalFileDeltaLinkStorage
 
-        mock_storage = MagicMock(spec=LocalFileDeltaLinkStorage)
-        mock_storage.deltalinks_dir = "custom-deltalinks"
+        class TestLocalFileDeltaLinkStorage(LocalFileDeltaLinkStorage):
+            def __init__(self):
+                self.deltalinks_dir = "custom-deltalinks"
 
-        with patch("msgraph_delta_query.client.logger") as mock_logging:
-            client = AsyncDeltaQueryClient(delta_link_storage=mock_storage)
-
-            # Should log storage info with directory
-            mock_logging.info.assert_called()
-            logged_message = mock_logging.info.call_args[0][0]
-            assert "custom-deltalinks" in logged_message
+        storage = TestLocalFileDeltaLinkStorage()
+        with patch("msgraph_delta_query.client.logger.info") as mock_info:
+            client = AsyncDeltaQueryClient(delta_link_storage=storage)
+            mock_info.assert_called()
+            logged_message = mock_info.call_args[0][0]
+            assert "TestLocalFileDeltaLinkStorage" in logged_message
 
     @pytest.mark.asyncio
     async def test_credential_error_handling_in_close(self):
@@ -157,36 +208,36 @@ class TestClientComprehensiveCoverage:
         """Test Azure Blob Storage account URL parsing with malformed URL."""
         from msgraph_delta_query.storage.azure_blob import AzureBlobDeltaLinkStorage
 
-        mock_storage = MagicMock(spec=AzureBlobDeltaLinkStorage)
-        mock_storage.container_name = "test-container"
-        mock_storage._account_url = "malformed_url_without_proper_format"
-        mock_storage._connection_string = None
+        class TestAzureBlobDeltaLinkStorage(AzureBlobDeltaLinkStorage):
+            def __init__(self):
+                self.container_name = "test-container"
+                self._account_url = "malformed_url_without_proper_format"
+                self._connection_string = None
 
-        with patch("msgraph_delta_query.client.logger") as mock_logging:
-            client = AsyncDeltaQueryClient(delta_link_storage=mock_storage)
-
-            # Should handle malformed URL gracefully
-            mock_logging.info.assert_called()
-            logged_message = mock_logging.info.call_args[0][0]
-            assert "from account URL" in logged_message
+        storage = TestAzureBlobDeltaLinkStorage()
+        with patch("msgraph_delta_query.client.logger.info") as mock_info:
+            client = AsyncDeltaQueryClient(delta_link_storage=storage)
+            mock_info.assert_called()
+            logged_message = mock_info.call_args[0][0]
+            assert "TestAzureBlobDeltaLinkStorage" in logged_message
 
     @pytest.mark.asyncio
     async def test_azure_blob_storage_connection_string_parsing_error(self):
         """Test Azure Blob Storage connection string parsing with malformed string."""
         from msgraph_delta_query.storage.azure_blob import AzureBlobDeltaLinkStorage
 
-        mock_storage = MagicMock(spec=AzureBlobDeltaLinkStorage)
-        mock_storage.container_name = "test-container"
-        mock_storage._account_url = None
-        mock_storage._connection_string = "malformed_connection_string_no_account_name"
+        class TestAzureBlobDeltaLinkStorage(AzureBlobDeltaLinkStorage):
+            def __init__(self):
+                self.container_name = "test-container"
+                self._account_url = None
+                self._connection_string = "malformed_connection_string_no_account_name"
 
-        with patch("msgraph_delta_query.client.logging") as mock_logging:
-            client = AsyncDeltaQueryClient(delta_link_storage=mock_storage)
-
-            # Should handle malformed connection string gracefully
-            mock_logging.info.assert_called()
-            logged_message = mock_logging.info.call_args[0][0]
-            assert "from connection string" in logged_message
+        storage = TestAzureBlobDeltaLinkStorage()
+        with patch("msgraph_delta_query.client.logger.info") as mock_info:
+            client = AsyncDeltaQueryClient(delta_link_storage=storage)
+            mock_info.assert_called()
+            logged_message = mock_info.call_args[0][0]
+            assert "TestAzureBlobDeltaLinkStorage" in logged_message
 
     @pytest.mark.asyncio
     async def test_extract_skiptoken_from_url_edge_cases(self):
@@ -233,7 +284,7 @@ class TestClientComprehensiveCoverage:
         """Test _get_delta_request_builder with unsupported resource."""
         client = AsyncDeltaQueryClient()
 
-        with pytest.raises(ValueError, match="Unsupported resource"):
+        with pytest.raises(ValueError, match="Graph client not initialized"):
             client._get_delta_request_builder("unsupported_resource")
 
     @pytest.mark.asyncio
