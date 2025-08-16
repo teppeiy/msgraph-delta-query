@@ -151,8 +151,8 @@ class TestExecuteDeltaRequestMethod:
 
         query_params = {"deltatoken": "invalid_token", "select": ["id"]}
 
-        with patch("logging.warning") as mock_warning:
-            with patch("logging.info") as mock_info:
+        with patch.object(client.logger, "warning") as mock_warning:
+            with patch.object(client.logger, "info") as mock_info:
                 response, fallback_occurred = await client._execute_delta_request(
                     mock_request_builder,
                     query_params,
@@ -315,7 +315,7 @@ class TestDeltaQueryStreamMethod:
             with patch.object(
                 client, "_extract_delta_token_from_link", return_value="stored123"
             ) as mock_extract:
-                with patch("logging.info") as mock_info:
+                with patch.object(client.logger, "info") as mock_info:
                     # Mock the stream to prevent actual iteration
                     mock_builder.return_value = Mock()
 

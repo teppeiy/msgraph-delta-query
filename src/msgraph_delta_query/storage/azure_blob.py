@@ -362,11 +362,13 @@ class AzureBlobDeltaLinkStorage(DeltaLinkStorage):
             self._blob_service_client = None
             logger.debug("Closed BlobServiceClient")
 
-        if self._credential and hasattr(self._credential, "close"):
-            try:
-                await self._credential.close()
-            except Exception as e:
-                logger.debug(f"Error closing credential: {e}")
+        if self._credential:
+            if hasattr(self._credential, "close"):
+                try:
+                    await self._credential.close()
+                except Exception as e:
+                    logger.debug(f"Error closing credential: {e}")
+                logger.debug("Closed Azure credential")
+            # Always set to None and reset flag, even if no close method
             self._credential = None
             self._credential_created = False
-            logger.debug("Closed Azure credential")

@@ -152,25 +152,20 @@ class TestAzureBlobStorageComprehensiveCoverage:
     @pytest.mark.asyncio
     async def test_blob_service_client_with_managed_identity(self):
         """Test creating blob service client with managed identity (no credential provided)."""
-        storage = AzureBlobDeltaLinkStorage(
-            account_url="https://testaccount.blob.core.windows.net"
-        )
-
-        with patch(
-            "msgraph_delta_query.storage.azure_blob.BlobServiceClient"
-        ) as mock_blob_client, patch(
-            "msgraph_delta_query.storage.azure_blob.DefaultAzureCredential"
-        ) as mock_cred_class:
-
-            mock_credential = MagicMock()
-            mock_cred_class.return_value = mock_credential
-
-            client = await storage._get_blob_service_client()
-
-            # Should create DefaultAzureCredential
-            mock_cred_class.assert_called_once()
-            assert storage._credential == mock_credential
-            assert storage._credential_created is True
+        with patch.dict(os.environ, {"AZURE_STORAGE_ACCOUNT_NAME": "testaccount"}, clear=True):
+            storage = AzureBlobDeltaLinkStorage()
+            storage._connection_string = None  # Ensure no connection string is present
+            storage._credential = None
+            storage._credential_created = False
+            with patch("msgraph_delta_query.storage.azure_blob.BlobServiceClient") as mock_blob_client, \
+                 patch("msgraph_delta_query.storage.azure_blob.DefaultAzureCredential") as mock_cred_class:
+                mock_credential = MagicMock()
+                mock_cred_class.return_value = mock_credential
+                client = await storage._get_blob_service_client()
+                # Should create DefaultAzureCredential
+                mock_cred_class.assert_called_once()
+                assert storage._credential == mock_credential
+                assert storage._credential_created is True
 
     @pytest.mark.asyncio
     async def test_blob_service_client_no_connection_error(self):
@@ -215,16 +210,12 @@ class TestAzureBlobStorageComprehensiveCoverage:
     async def test_ensure_container_exists_error(self):
         """Test error handling in _ensure_container_exists."""
         storage = AzureBlobDeltaLinkStorage()
-
-        mock_blob_service = AsyncMock()
-        mock_container_client = AsyncMock()
+        from unittest.mock import Mock
+        mock_blob_service = Mock()
+        mock_container_client = Mock()
+        # get_container_properties should be an async method
+        mock_container_client.get_container_properties = AsyncMock(side_effect=ServiceRequestError("Service unavailable"))
         mock_blob_service.get_container_client.return_value = mock_container_client
-
-        # Mock create_container to raise an exception
-        mock_container_client.create_container.side_effect = ServiceRequestError(
-            "Service unavailable"
-        )
-
         with patch.object(
             storage, "_get_blob_service_client", return_value=mock_blob_service
         ):

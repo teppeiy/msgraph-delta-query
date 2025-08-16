@@ -157,15 +157,15 @@ class TestAsyncDeltaQueryClientSDK:
 
         assert client._closed
 
-    async def test_internal_close_handles_credential_error(self, mock_credential):
+    async def test_internal_close_handles_credential_error(self, mock_credential, caplog):
         """Test that _internal_close handles credential errors gracefully."""
         client = AsyncDeltaQueryClient(credential=mock_credential)
         client._credential_created = True  # Simulate that we created the credential
         mock_credential.close.side_effect = Exception("Close error")
 
-        with patch("logging.warning") as mock_warning:
+        with caplog.at_level("WARNING"):
             await client._internal_close()
-            mock_warning.assert_called_with("Error closing credential: Close error")
+        assert any("Error closing credential: Close error" in m for m in caplog.messages)
 
     async def test_extract_delta_token_from_link(self):
         """Test delta token extraction from delta links."""
@@ -360,11 +360,13 @@ async def test_cleanup_all_clients():
             mock_close2.assert_called_once()
 
 
-async def test_cleanup_all_clients_with_errors():
+
+async def test_cleanup_all_clients_with_errors(caplog):
     """Test cleanup handles errors gracefully."""
     client = AsyncDeltaQueryClient()
-
     with patch.object(client, "_internal_close", side_effect=Exception("Test error")):
-        with patch("logging.warning") as mock_warning:
+        import logging
+        logger = logging.getLogger("msgraph_delta_query.client")
+        with caplog.at_level("WARNING", logger=logger.name):
             await _cleanup_all_clients()
-            mock_warning.assert_called()
+        assert any("Error cleaning up client: Test error" in m for m in caplog.messages)
