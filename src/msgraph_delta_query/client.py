@@ -182,20 +182,32 @@ class AsyncDeltaQueryClient:
         # Close Graph client if it exists
         if self._graph_client:
             self.logger.debug("Graph client exists, attempting to close HTTP client")
-            # The Microsoft Graph SDK manages its own HTTP client lifecycle
-            # We'll let the SDK handle cleanup automatically
             try:
-                # Try to access the request adapter to see if it exists
-                if hasattr(self._graph_client, 'request_adapter') and self._graph_client.request_adapter:
-                    self.logger.debug("Request adapter found - SDK will handle HTTP client cleanup")
-                    # Note: We don't directly access _http_client as it's a private attribute
-                    # The SDK will handle proper cleanup of the HTTP client internally
+                # Try to access the request adapter and its _http_client
+                adapter = getattr(self._graph_client, 'request_adapter', None)
+                if adapter and hasattr(adapter, '_http_client'):
+                    http_client = getattr(adapter, '_http_client', None)
+                    if http_client is not None:
+                        # Only close if not already closed
+                        closed = False
+                        # Try to get the closed state from property or method
+                        try:
+                            # If is_closed is a property, access it directly
+                            closed = http_client.is_closed
+                        except Exception:
+                            # If is_closed is a method, call it
+                            try:
+                                closed = http_client.is_closed()
+                            except Exception:
+                                closed = False
+                        if not closed and hasattr(http_client, 'aclose'):
+                            self.logger.debug("Closing underlying HTTPX client via aclose()")
+                            await http_client.aclose()
+                    self.logger.debug("Request adapter found - HTTP client cleanup complete")
                 else:
-                    self.logger.debug("No request adapter found")
+                    self.logger.debug("No request adapter or _http_client found")
             except Exception as e:
-                self.logger.warning(f"Error checking request adapter: {e}")
-            
-            # The SDK handles its own cleanup
+                self.logger.warning(f"Error closing HTTP client: {e}")
             self._graph_client = None
             self.logger.debug("Closed GraphServiceClient")
         else:

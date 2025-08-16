@@ -63,7 +63,11 @@ class LocalFileDeltaLinkStorage(DeltaLinkStorage):
 
     async def get_metadata(self, resource: str) -> Optional[Dict]:
         """Get metadata for a resource including last sync time."""
-        path = self._get_resource_path(resource)
+        try:
+            path = self._get_resource_path(resource)
+        except Exception as e:
+            logger.warning(f"Failed to get resource path for {resource}: {e}")
+            return None
         if os.path.exists(path):
             try:
                 with open(path, "r", encoding="utf-8") as f:
@@ -83,6 +87,17 @@ class LocalFileDeltaLinkStorage(DeltaLinkStorage):
     ) -> None:
         """Set delta link and metadata for a resource."""
         path = self._get_resource_path(resource)
+        # Ensure directory exists, handle permission errors
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+        except FileExistsError:
+            pass
+        except PermissionError as e:
+            logger.error(f"Failed to create directory for {resource}: {e}")
+            return
+        except Exception as e:
+            logger.warning(f"Failed to create directory for {resource}: {e}")
+            return
         data = {
             "delta_link": delta_link,
             "last_updated": datetime.now(timezone.utc).isoformat(),

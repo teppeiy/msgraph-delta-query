@@ -29,10 +29,14 @@ class TestPaginationResponseTypes:
     def mock_storage(self):
         """Mock delta link storage."""
         storage = Mock(spec=LocalFileDeltaLinkStorage)
-        storage.get = AsyncMock(return_value=None)
-        storage.set = AsyncMock()
-        storage.delete = AsyncMock()
-        storage.close = AsyncMock()
+        async def async_none(*args, **kwargs):
+            return None
+        async def async_noop(*args, **kwargs):
+            pass
+        storage.get = AsyncMock(side_effect=async_none)
+        storage.set = AsyncMock(side_effect=async_noop)
+        storage.delete = AsyncMock(side_effect=async_noop)
+        storage.close = AsyncMock(side_effect=async_noop)
         return storage
 
     def create_mock_user_response(self, user_count: int = 5, has_next: bool = False):

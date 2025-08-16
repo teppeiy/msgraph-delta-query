@@ -8,7 +8,6 @@ from dotenv import load_dotenv
 from msgraph_delta_query import AsyncDeltaQueryClient
 
 
-@pytest.mark.asyncio
 class TestInvalidDeltaLinkHandling:
     """Test how the client handles invalid delta links."""
 

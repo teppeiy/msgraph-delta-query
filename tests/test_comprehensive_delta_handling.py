@@ -11,7 +11,6 @@ from dotenv import load_dotenv
 from msgraph_delta_query import AsyncDeltaQueryClient
 
 
-@pytest.mark.asyncio
 class TestComprehensiveDeltaHandling:
     """Test that the client handles all delta link failure scenarios correctly."""
 

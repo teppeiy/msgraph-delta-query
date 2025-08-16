@@ -76,12 +76,9 @@ class TestLocalFileComprehensiveCoverage:
     @pytest.mark.asyncio
     async def test_get_metadata_with_general_exception(self):
         """Test get_metadata method with general exception."""
-        storage = LocalFileDeltaLinkStorage()
-
-        # Mock _get_resource_path to raise exception
-        with patch.object(
-            storage, "_get_resource_path", side_effect=Exception("General error")
-        ):
+        # Patch on the class so the method is not replaced after binding
+        with patch.object(LocalFileDeltaLinkStorage, "_get_resource_path", side_effect=Exception("General error")):
+            storage = LocalFileDeltaLinkStorage()
             result = await storage.get_metadata("test_resource")
             # Should return None on general exception
             assert result is None
@@ -173,8 +170,11 @@ class TestLocalFileComprehensiveCoverage:
 
         # Mock os.makedirs to raise PermissionError
         with patch("os.makedirs", side_effect=PermissionError("Permission denied")):
-            with pytest.raises(PermissionError):
+            from msgraph_delta_query.storage import local_file
+            with patch.object(local_file.logger, "error") as mock_log_error:
                 await storage.set("test_resource", "delta_link_value")
+                mock_log_error.assert_called()
+                assert any("Permission denied" in str(call.args[0]) for call in mock_log_error.call_args_list)
 
     @pytest.mark.asyncio
     async def test_set_with_makedirs_file_exists_error(self):

@@ -221,8 +221,9 @@ class TestUnclosedSessionBugFixes:
         # Mock the GraphServiceClient and its request adapter
         mock_adapter = Mock()
         mock_http_client = Mock()
+        # Ensure is_closed is False so aclose will be called
+        type(mock_http_client).is_closed = property(lambda self: False)
         mock_http_client.aclose = AsyncMock()
-        mock_http_client.is_closed = False
         mock_adapter._http_client = mock_http_client
 
         mock_graph_instance = Mock()

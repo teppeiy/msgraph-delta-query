@@ -233,7 +233,9 @@ class TestAzureBlobStorageComprehensiveCoverage:
 
         # Mock invalid JSON content
         mock_download_stream.readall.return_value = b"{ invalid json"
-        mock_blob_client.download_blob.return_value = mock_download_stream
+        async def download_blob(*args, **kwargs):
+            return mock_download_stream
+        mock_blob_client.download_blob.side_effect = download_blob
         mock_blob_service.get_blob_client.return_value = mock_blob_client
 
         with patch.object(
@@ -258,7 +260,9 @@ class TestAzureBlobStorageComprehensiveCoverage:
         mock_download_stream.readall.return_value = json.dumps(invalid_data).encode(
             "utf-8"
         )
-        mock_blob_client.download_blob.return_value = mock_download_stream
+        async def download_blob(*args, **kwargs):
+            return mock_download_stream
+        mock_blob_client.download_blob.side_effect = download_blob
         mock_blob_service.get_blob_client.return_value = mock_blob_client
 
         with patch.object(
@@ -301,9 +305,9 @@ class TestAzureBlobStorageComprehensiveCoverage:
         mock_blob_client = AsyncMock()
 
         # Mock ResourceNotFoundError
-        mock_blob_client.delete_blob.side_effect = ResourceNotFoundError(
-            "Blob not found"
-        )
+        async def delete_blob(*args, **kwargs):
+            raise ResourceNotFoundError("Blob not found")
+        mock_blob_client.delete_blob.side_effect = delete_blob
         mock_blob_service.get_blob_client.return_value = mock_blob_client
 
         with patch.object(
@@ -321,7 +325,9 @@ class TestAzureBlobStorageComprehensiveCoverage:
         mock_blob_client = AsyncMock()
 
         # Mock general exception
-        mock_blob_client.delete_blob.side_effect = Exception("Service error")
+        async def delete_blob(*args, **kwargs):
+            raise Exception("Service error")
+        mock_blob_client.delete_blob.side_effect = delete_blob
         mock_blob_service.get_blob_client.return_value = mock_blob_client
 
         with patch.object(
