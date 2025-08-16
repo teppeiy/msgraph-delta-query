@@ -8,6 +8,7 @@ from typing import Generator
 # Load environment variables for all tests
 try:
     from dotenv import load_dotenv
+
     load_dotenv()
     print("🔑 Loaded environment variables from .env file for tests")
 except ImportError:

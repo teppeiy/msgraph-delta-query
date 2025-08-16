@@ -92,7 +92,9 @@ class TestAsyncDeltaQueryClientSDK:
             mock_graph_client = Mock()
             mock_graph_class.return_value = mock_graph_client
 
-            with patch("msgraph_delta_query.client.DefaultAzureCredential") as mock_cred_class:
+            with patch(
+                "msgraph_delta_query.client.DefaultAzureCredential"
+            ) as mock_cred_class:
                 mock_credential = AsyncMock()
                 mock_cred_class.return_value = mock_credential
 
@@ -110,7 +112,9 @@ class TestAsyncDeltaQueryClientSDK:
         client = AsyncDeltaQueryClient()
 
         with patch("msgraph_delta_query.client.GraphServiceClient") as mock_graph_class:
-            with patch("msgraph_delta_query.client.DefaultAzureCredential") as mock_cred_class:
+            with patch(
+                "msgraph_delta_query.client.DefaultAzureCredential"
+            ) as mock_cred_class:
                 await client._initialize()
                 await client._initialize()  # Second call should not create new instances
 
@@ -123,9 +127,11 @@ class TestAsyncDeltaQueryClientSDK:
         client._closed = True
 
         with patch("msgraph_delta_query.client.GraphServiceClient") as mock_graph_class:
-            with patch("msgraph_delta_query.client.DefaultAzureCredential") as mock_cred_class:
+            with patch(
+                "msgraph_delta_query.client.DefaultAzureCredential"
+            ) as mock_cred_class:
                 await client._initialize()
-                
+
                 # Should reset closed state and initialize
                 assert not client._closed
                 assert client._initialized
@@ -149,7 +155,7 @@ class TestAsyncDeltaQueryClientSDK:
     async def test_internal_close_idempotent(self):
         """Test that _internal_close can be called multiple times."""
         client = AsyncDeltaQueryClient()
-        
+
         await client._internal_close()
         await client._internal_close()  # Should not raise
 
@@ -168,17 +174,17 @@ class TestAsyncDeltaQueryClientSDK:
     async def test_extract_delta_token_from_link(self):
         """Test delta token extraction from delta links."""
         client = AsyncDeltaQueryClient()
-        
+
         # Test valid delta link
         delta_link = "https://graph.microsoft.com/v1.0/users/delta?$deltatoken=abc123"
         token = await client._extract_delta_token_from_link(delta_link)
         assert token == "abc123"
-        
+
         # Test invalid delta link
         invalid_link = "https://graph.microsoft.com/v1.0/users"
         token = await client._extract_delta_token_from_link(invalid_link)
         assert token is None
-        
+
         # Test None
         token = await client._extract_delta_token_from_link(None)
         assert token is None
@@ -188,23 +194,25 @@ class TestAsyncDeltaQueryClientSDK:
         client = AsyncDeltaQueryClient(
             credential=mock_credential, delta_link_storage=mock_storage
         )
-        
+
         # Create mock graph client and set it directly
         mock_graph_client = Mock()
         client._graph_client = mock_graph_client
         client._initialized = True
-        
+
         # Mock SDK response
         mock_response = Mock()
         mock_response.value = [{"id": "1", "display_name": "User1"}]
         mock_response.odata_next_link = None
         mock_response.odata_delta_link = "https://example.com/delta?token=xyz"
-        
+
         # Mock the entire _execute_delta_request method to return the mock response
         async def mock_execute_delta_request(*args, **kwargs):
             return mock_response, False  # response, fallback_occurred
-        
-        with patch.object(client, "_execute_delta_request", side_effect=mock_execute_delta_request):
+
+        with patch.object(
+            client, "_execute_delta_request", side_effect=mock_execute_delta_request
+        ):
             objects = []
             async for page_objects, metadata in client.delta_query_stream("users"):
                 objects.extend(page_objects)
@@ -222,7 +230,7 @@ class TestAsyncDeltaQueryClientSDK:
         # Mock the stream method
         async def mock_stream(*args, **kwargs):
             from msgraph_delta_query.models import PageMetadata
-            
+
             page1_meta = PageMetadata(
                 page=1,
                 object_count=1,
@@ -274,16 +282,32 @@ class TestAsyncDeltaQueryClientSDK:
         # Mock the stream method to return more objects than the limit
         async def mock_stream(*args, **kwargs):
             from msgraph_delta_query.models import PageMetadata
-            
+
             page1_meta = PageMetadata(
-                page=1, object_count=2, has_next_page=True, delta_link=None,
-                raw_response_size=100, page_new_or_updated=2, page_deleted=0,
-                page_changed=0, total_new_or_updated=2, total_deleted=0, total_changed=0,
+                page=1,
+                object_count=2,
+                has_next_page=True,
+                delta_link=None,
+                raw_response_size=100,
+                page_new_or_updated=2,
+                page_deleted=0,
+                page_changed=0,
+                total_new_or_updated=2,
+                total_deleted=0,
+                total_changed=0,
             )
             page2_meta = PageMetadata(
-                page=2, object_count=2, has_next_page=False, delta_link="final_link",
-                raw_response_size=100, page_new_or_updated=2, page_deleted=0,
-                page_changed=0, total_new_or_updated=4, total_deleted=0, total_changed=0,
+                page=2,
+                object_count=2,
+                has_next_page=False,
+                delta_link="final_link",
+                raw_response_size=100,
+                page_new_or_updated=2,
+                page_deleted=0,
+                page_changed=0,
+                total_new_or_updated=4,
+                total_deleted=0,
+                total_changed=0,
             )
             yield [{"id": "1"}, {"id": "2"}], page1_meta
             yield [{"id": "3"}, {"id": "4"}], page2_meta
@@ -299,11 +323,11 @@ class TestAsyncDeltaQueryClientSDK:
     async def test_reset_delta_link(self, mock_storage):
         """Test delta link reset functionality."""
         client = AsyncDeltaQueryClient(delta_link_storage=mock_storage)
-        
+
         # Set a delta link first
         await mock_storage.set("users", "some_delta_link")
         assert await mock_storage.get("users") == "some_delta_link"
-        
+
         # Reset it
         await client.reset_delta_link("users")
         assert await mock_storage.get("users") is None
@@ -319,7 +343,7 @@ class TestAsyncDeltaQueryClientSDK:
     async def test_supported_resources(self):
         """Test that supported resources are correctly defined."""
         client = AsyncDeltaQueryClient()
-        
+
         assert "users" in client.SUPPORTED_RESOURCES
         assert "applications" in client.SUPPORTED_RESOURCES
         assert "groups" in client.SUPPORTED_RESOURCES
@@ -331,11 +355,11 @@ async def test_cleanup_all_clients():
     """Test cleanup of all clients."""
     client1 = AsyncDeltaQueryClient()
     client2 = AsyncDeltaQueryClient()
-    
+
     with patch.object(client1, "_internal_close") as mock_close1:
         with patch.object(client2, "_internal_close") as mock_close2:
             await _cleanup_all_clients()
-            
+
             mock_close1.assert_called_once()
             mock_close2.assert_called_once()
 
@@ -343,7 +367,7 @@ async def test_cleanup_all_clients():
 async def test_cleanup_all_clients_with_errors():
     """Test cleanup handles errors gracefully."""
     client = AsyncDeltaQueryClient()
-    
+
     with patch.object(client, "_internal_close", side_effect=Exception("Test error")):
         with patch("logging.warning") as mock_warning:
             await _cleanup_all_clients()

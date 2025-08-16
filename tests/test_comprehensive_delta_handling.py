@@ -218,16 +218,18 @@ class TestComprehensiveDeltaHandling:
             # and may not always produce the exact error we expect
             # Check that we got valid results and the operation completed
             log_output = log_capture.getvalue()
-            
+
             # Verify the operation completed successfully
             assert isinstance(apps, list)
             assert metadata is not None  # Can be dict or DeltaQueryMetadata object
-            
+
             # The SDK may handle invalid delta tokens gracefully, so we verify
             # either we get error logs OR successful completion
-            has_error_log = "Delta link failed" in log_output or "falling back" in log_output
+            has_error_log = (
+                "Delta link failed" in log_output or "falling back" in log_output
+            )
             has_successful_completion = len(apps) > 0
-            
+
             # Accept either outcome - error with fallback OR successful handling
             assert has_error_log or has_successful_completion
 

@@ -1,6 +1,5 @@
 """Test __init__ module."""
 
-import pytest
 from msgraph_delta_query import (
     AsyncDeltaQueryClient,
     DeltaLinkStorage,

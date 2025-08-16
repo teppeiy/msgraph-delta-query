@@ -7,7 +7,6 @@ type safety, and maintainability.
 """
 
 import logging
-logger = logging.getLogger(__name__)
 
 import urllib.parse
 import asyncio
@@ -15,12 +14,11 @@ import weakref
 from typing import Optional, Any, Dict, List, Tuple, AsyncGenerator
 from azure.identity.aio import DefaultAzureCredential
 from datetime import datetime, timezone
-
-# Microsoft Graph SDK imports
 from msgraph.graph_service_client import GraphServiceClient
-
 from .storage import DeltaLinkStorage, LocalFileDeltaLinkStorage
 from .models import ChangeSummary, ResourceParams, PageMetadata, DeltaQueryMetadata
+
+logger = logging.getLogger(__name__)
 
 
 # Global registry to track all client instances for cleanup

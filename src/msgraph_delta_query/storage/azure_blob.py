@@ -329,7 +329,9 @@ class AzureBlobDeltaLinkStorage(DeltaLinkStorage):
             logger.debug(f"Saved delta link for {resource} to Azure Blob Storage")
 
         except Exception as e:
-            logger.error(f"Failed to save delta link for {resource} to Azure Blob Storage: {e}")
+            logger.error(
+                f"Failed to save delta link for {resource} to Azure Blob Storage: {e}"
+            )
             raise
 
     async def delete(self, resource: str) -> None:

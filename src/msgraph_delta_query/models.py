@@ -174,10 +174,10 @@ class DeltaQueryMetadata:
         print(f"✓ Sync type: {sync_type}")
         if self.pages_fetched > 1:
             print(f"✓ Pages processed: {self.pages_fetched}")
-        
+
         # Print change summary using the built-in method
         self.change_summary.print_summary(f"{resource_name} Changes")
-        
+
         # Print storage info
         if self.used_stored_deltalink:
             print(f"💾 Delta link used for incremental sync")
@@ -187,4 +187,6 @@ class DeltaQueryMetadata:
     def print_compact_results(self, resource_name: str = "Objects") -> None:
         """Print a compact one-line summary of sync results."""
         sync_type = "Incremental" if self.used_stored_deltalink else "Full"
-        print(f"✓ {sync_type} sync completed in {self.duration_seconds:.2f}s - {self.change_summary.total} changes ({self.change_summary.new_or_updated} new/updated, {self.change_summary.deleted} deleted, {self.change_summary.changed} changed)")
+        print(
+            f"✓ {sync_type} sync completed in {self.duration_seconds:.2f}s - {self.change_summary.total} changes ({self.change_summary.new_or_updated} new/updated, {self.change_summary.deleted} deleted, {self.change_summary.changed} changed)"
+        )
