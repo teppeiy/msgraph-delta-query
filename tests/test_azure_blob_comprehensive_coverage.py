@@ -232,10 +232,12 @@ class TestAzureBlobStorageComprehensiveCoverage:
         mock_download_stream = AsyncMock()
 
         # Mock invalid JSON content
-        mock_download_stream.readall.return_value = b"{ invalid json"
+        async def mock_readall():
+            return b"{ invalid json"
+        mock_download_stream.readall = AsyncMock(side_effect=mock_readall)
         async def download_blob(*args, **kwargs):
             return mock_download_stream
-        mock_blob_client.download_blob.side_effect = download_blob
+        mock_blob_client.download_blob = AsyncMock(side_effect=download_blob)
         mock_blob_service.get_blob_client.return_value = mock_blob_client
 
         with patch.object(
@@ -257,12 +259,12 @@ class TestAzureBlobStorageComprehensiveCoverage:
 
         # Mock JSON with non-string delta_link
         invalid_data = {"delta_link": 123, "last_sync": "2025-01-01T00:00:00Z"}
-        mock_download_stream.readall.return_value = json.dumps(invalid_data).encode(
-            "utf-8"
-        )
+        async def mock_readall():
+            return json.dumps(invalid_data).encode("utf-8")
+        mock_download_stream.readall = AsyncMock(side_effect=mock_readall)
         async def download_blob(*args, **kwargs):
             return mock_download_stream
-        mock_blob_client.download_blob.side_effect = download_blob
+        mock_blob_client.download_blob = AsyncMock(side_effect=download_blob)
         mock_blob_service.get_blob_client.return_value = mock_blob_client
 
         with patch.object(
@@ -307,7 +309,7 @@ class TestAzureBlobStorageComprehensiveCoverage:
         # Mock ResourceNotFoundError
         async def delete_blob(*args, **kwargs):
             raise ResourceNotFoundError("Blob not found")
-        mock_blob_client.delete_blob.side_effect = delete_blob
+        mock_blob_client.delete_blob = AsyncMock(side_effect=delete_blob)
         mock_blob_service.get_blob_client.return_value = mock_blob_client
 
         with patch.object(
@@ -327,7 +329,7 @@ class TestAzureBlobStorageComprehensiveCoverage:
         # Mock general exception
         async def delete_blob(*args, **kwargs):
             raise Exception("Service error")
-        mock_blob_client.delete_blob.side_effect = delete_blob
+        mock_blob_client.delete_blob = AsyncMock(side_effect=delete_blob)
         mock_blob_service.get_blob_client.return_value = mock_blob_client
 
         with patch.object(

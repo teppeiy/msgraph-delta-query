@@ -251,9 +251,9 @@ class TestPaginationResponseTypes:
         stored_delta_link = (
             "https://graph.microsoft.com/v1.0/users/delta?deltatoken=stored_token"
         )
-        mock_storage.get = AsyncMock(
-            return_value=(stored_delta_link, {"metadata": "test"})
-        )
+        async def mock_get(*args, **kwargs):
+            return (stored_delta_link, {"metadata": "test"})
+        mock_storage.get = AsyncMock(side_effect=mock_get)
 
         # Mock the graph client
         mock_graph_client = Mock()
